@@ -86,8 +86,9 @@ struct i2c_client *gLC898301_client;
 
 static int vib_mode=0;
 static int g_vib_stopval = 0;
-unsigned int debounce_rst_pin = 3000;
+unsigned int debounce_rst_pin = 10000;
 unsigned int deb_maxtime_rst_pin =7200000 ;
+bool g_ResetPinHigh = false;
 /*
 LC898301_write_reg():	write 8 bits reg function
 slave_addr:	SMBus address (7 bits)
@@ -133,21 +134,16 @@ int LC898301_read_reg(uint8_t slave_addr, uint8_t cmd_reg, uint8_t *store_read_v
 static void vibrator_rst_low_timer(unsigned long _data)
 {
 	gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
+	g_ResetPinHigh = false;
 	printk("[On_semi_vibrator] gpio_rst_pin:Low\n");
 }
 
 static int LC898301_vib_set(struct LC898301_vib *vib, int on)
 {
-	int rc = 0, ret =0;	
+	int rc = 0;
 
 	if (on)
 	{
-		ret = LC898301_init_register();
-		if(ret)
-		{
-			printk("[On_semi_vibrator] %s:LC898301_init_register_fail\n",__func__);
-			return ret;
-		}		
 		rc = LC898301_write_reg(LC898301_waddr, SELFTEST_09, 0x02);//vibrator on
 
 		if (rc < 0)
@@ -181,9 +177,19 @@ static void LC898301_vib_update(struct work_struct *work)
 
 static void LC898301_vib_enable(struct timed_output_dev *dev, int value)
 {
+	int ret = 0;
 	struct LC898301_vib *vib = container_of(dev, struct LC898301_vib, timed_dev);
-	gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-	msleep(1);	
+	if( !g_ResetPinHigh )
+	{
+		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
+		g_ResetPinHigh = true;
+		msleep(1);
+		ret = LC898301_init_register();
+		if(ret)
+		{
+			printk("[On_semi_vibrator] %s:LC898301_init_register_fail\n",__func__);
+		}
+	}
 	mod_timer(&pvib_dev.timer,jiffies + msecs_to_jiffies(deb_maxtime_rst_pin));	
 	mutex_lock(&vib->lock);
 	hrtimer_cancel(&vib->vib_timer);
@@ -333,6 +339,7 @@ static int on_semi_vibrator_suspend(struct device *dev)
 	if(del_timer(&pvib_dev.timer))
 	{
 		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
+		g_ResetPinHigh = false;
 		printk("[On_semi_vibrator] suspend_gpio_rst_pin:Low\n");
 	}
 
@@ -366,13 +373,21 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 
 	ret = param_set_int(val, kp);
 
+	if( !g_ResetPinHigh )
+	{
+		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
+		g_ResetPinHigh = false;
+		msleep(1);
+		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
+		g_ResetPinHigh = true;
+		msleep(1);
+	}
+
 	if (vib_mode == 0)
 	{
 	
 		printk("[On_semi_vibrator] set 100 degree & 1.363 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+	
 		//driving voltage 15/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0F);
 		if (ret < 0)
@@ -392,9 +407,7 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 	else if (vib_mode == 1)
 	{
 		printk("[On_semi_vibrator] set 170 degree & 1.305 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+		
 		//driving voltage 8/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x08);
 		if (ret < 0)
@@ -414,9 +427,7 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 	else if (vib_mode == 2)
 	{
 		printk("[On_semi_vibrator] set 170 degree & 1.479 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+	
 		//driving voltage 9/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x09);
 		if (ret < 0)
@@ -436,9 +447,7 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 	else if (vib_mode == 3)
 	{
 		printk("[On_semi_vibrator] set 170 degree & 1.653 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+	
 		//driving voltage 10/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0A);
 		if (ret < 0)
@@ -457,9 +466,7 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 	else if (vib_mode == 4)
 	{
 		printk("[On_semi_vibrator] set 170 degree & 1.827 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+	
 		//driving voltage 11/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0B);
 		if (ret < 0)
@@ -477,10 +484,7 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 	}
 	else if (vib_mode == 5)
 	{
-		printk("[On_semi_vibrator] set 170 degree & 2.001 Vrms\n");
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
-		gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
-		msleep(1);		
+		printk("[On_semi_vibrator] set 170 degree & 2.001 Vrms\n");	
 		//driving voltage 12/15
 		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0C);
 		if (ret < 0)
@@ -601,6 +605,7 @@ static int LC898301_probe(struct i2c_client *client, const struct i2c_device_id 
 	
 	gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);
 	gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 1);
+	g_ResetPinHigh = true;
 	msleep(1);
 	//int RST gpio  ---
 	
@@ -622,6 +627,7 @@ static int LC898301_probe(struct i2c_client *client, const struct i2c_device_id 
 	setup_timer(&pvib_dev.timer, vibrator_rst_low_timer, (unsigned long)(&pvib_dev));
 
 	gpio_direction_output(pLC898301_data->PlatData->gpio_rst, 0);//reset pin when vibrator off
+	g_ResetPinHigh = false;
 
 	pvib_dev.timed_dev.name = "vibrator";
 	pvib_dev.timed_dev.get_time = LC898301_vib_get_time;
