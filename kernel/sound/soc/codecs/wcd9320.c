@@ -7701,22 +7701,20 @@ void ApplyA68SPKGain(void)
 	    if (AX_MicroP_getPadModel()==PAD_P93L)//PAD_P93L
 	    {
             if ((g_flag_csvoice_fe_connected) || (gSKYPE_state) || (gRingtone_state)) {
-                wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)));         //-0db
-                wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, (lineout1 & 0xE0));         //-0db
+                wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)));       //0db
+                wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, (lineout1 & 0xE0));         //0db
                 if (g_flag_csvoice_fe_connected)
                 {
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL, 0xA);         //+10db
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX5_VOL_CTL_B2_CTL, 0xA);         //+10db
+                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL, 0xA);           //+10db
+                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX5_VOL_CTL_B2_CTL, 0xA);           //+10db
                 }
             } else {
                 if (bMaxxOn) {
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)));     //-0db
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, (lineout1 & 0xE0));     //-0db
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL, 0x6);         //+6db
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_CDC_RX5_VOL_CTL_B2_CTL, 0x6);         //+6db
+			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, (lineout1 & 0xE0));     //0db
+			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, (lineout2 & 0xE0));     //0db
                 } else {
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0))); //-0db
-                    wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, ((lineout2 & 0xE0))); //-0db
+			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)|2)); //-3db
+			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, ((lineout2 & 0xE0)|2)); //-3db
                 }
             }
     
@@ -7731,7 +7729,7 @@ void ApplyA68SPKGain(void)
 			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, (lineout1 & 0xE0));     //0db
 			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, (lineout2 & 0xE0));     //0db
 		        } else {
-			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)|2)); //0db
+			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_1_GAIN, ((lineout1 & 0xE0)|2)); //-3db
 			        wcd9xxx_reg_write(&g_wcd9xxx->core_res, TAIKO_A_RX_LINE_2_GAIN, ((lineout2 & 0xE0)|2)); //-3db
 		        }
 	        }

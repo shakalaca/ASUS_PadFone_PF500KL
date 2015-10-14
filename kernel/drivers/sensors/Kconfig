@@ -8,6 +8,7 @@ config SENSORS_CM36283
 
 config SENSORS_CAP1106
 	bool "CAP1106 support"
+	default n
 	---help---
 	  ASUS SENSORS folder
 

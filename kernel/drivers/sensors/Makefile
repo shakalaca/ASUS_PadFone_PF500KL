@@ -8,4 +8,4 @@ obj-y				+= cm36283/
 obj-y				+= cm3628/
 obj-y				+= al3010/
 obj-y				+= proximity/
-obj-y                          	+= cap1106/
+obj-n                          	+= cap1106/

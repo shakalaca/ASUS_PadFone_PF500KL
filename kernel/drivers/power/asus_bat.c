@@ -2413,6 +2413,7 @@ static int asus_bat_report_pad_status(void)
 {
 	int pad_charging_sts;
 
+#if 0 /*Eason: When Pad plug cable, pad battery status will change to charging or full no matter what Pad battery status+++*/
 	//Eason: A68 new balance mode +++ test pad capacity need enable_test but will cause pad status error mark this
 	/*	
 	if (asus_bat->enable_test) { // from variable
@@ -2464,6 +2465,24 @@ static int asus_bat_report_pad_status(void)
 	//}//Eason: A68 new balance mode 
 
 	pr_info( "[BAT] %s(), ps charing:%d \r\n", __FUNCTION__, pad_charging_sts);
+
+#else
+	/*Eason: When Pad plug cable, pad battery status will change to charging or full no matter what Pad battery status+++*/
+	int pad_charging_sts_hw;
+	
+	if ( (ASUS_BAT_CHARGER_AC != asus_bat_get_pad_charger_byhw())&&(ASUS_BAT_CHARGER_USB != asus_bat_get_pad_charger_byhw()) ){
+		pad_charging_sts = POWER_SUPPLY_STATUS_DISCHARGING;
+	} else {
+		pad_charging_sts_hw = asus_bat_get_pad_charging_byhw();
+		if(asus_bat_report_pad_capacity() == 100)
+				pad_charging_sts = POWER_SUPPLY_STATUS_FULL;     
+		else
+				pad_charging_sts = POWER_SUPPLY_STATUS_CHARGING;	
+	}
+
+	pr_info( "[BAT] %s(), pad_charing sts:%d, hw_sts:%d \r\n", __FUNCTION__, pad_charging_sts, pad_charging_sts_hw);
+	/*Eason: When Pad plug cable, pad battery status will change to charging or full no matter what Pad battery status----*/
+#endif
 
 	return pad_charging_sts;
 }

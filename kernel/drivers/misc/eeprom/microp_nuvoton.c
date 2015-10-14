@@ -854,7 +854,7 @@ static void initP01(struct work_struct *work){
 			switch_set_state(&pad_err_notify, 0);
 
                     PadFone_IN_OUT(1); //notify wlan, pad is in
-                    
+
 		}
 		else{
 			printk("MicroP: P01 already added, skip \r\n");
@@ -880,6 +880,14 @@ static void initP01(struct work_struct *work){
 			micropSendNotify(PAD_USB_OTG_ENABLE);
 		}
 
+		/*Eason: Phone insert to Pad while pad plugged usb, sent uevent+++*/
+		if(P01_CABLE_USB == usb_type) {
+				g_b_isP01USBConnected=1;
+				switch_set_state(&p01_switch_usb_cable,g_b_isP01USBConnected);
+				printk("[Microp]set usb plugged uevent:%d\n",g_b_isP01USBConnected);
+		}
+		/*Eason: Phone insert to Pad while pad plugged usb, sent uevent---*/ 
+			
 		//Eason: When init P01 check intr status already handled+++
 		uP_nuvoton_read_reg(MICROP_INTR_STATUS,&reg_intr_sta_check);
 		while( (0!=reg_intr_sta_check)&&(retry_intr_cnt >=0 ) )
@@ -925,6 +933,12 @@ static void deinitPad(struct work_struct *work){
         // cancel all works of init wq
 
         micropSendNotify(P01_REMOVE);
+
+	/*Eason: Phone insert to Pad while pad plugged usb, sent uevent+++*/
+	g_b_isP01USBConnected=0;
+	switch_set_state(&p01_switch_usb_cable,g_b_isP01USBConnected);
+	printk("[Microp]set usb plugged uevent:%d\n",g_b_isP01USBConnected);
+	/*Eason: Phone insert to Pad while pad plugged usb, sent uevent---*/ 
 
         printk("%s -\r\n",__FUNCTION__);
 }
@@ -1071,6 +1085,7 @@ static void microP_work(struct work_struct *work)
                                                         checkPadLowCapacity();
 						}
 						switch_set_state(&p01_switch_usb_cable,g_b_isP01USBConnected);
+						printk("[Microp]set usb plugged uevent:%d\n",g_b_isP01USBConnected);
 					}
 
 					if(IsPadVolDnEvt()){

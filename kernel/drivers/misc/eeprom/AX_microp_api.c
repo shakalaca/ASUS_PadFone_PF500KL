@@ -242,7 +242,7 @@ int AX_MicroP_setGPIOOutputPin(int pinID, int level){
 
 	//workaround: for P92L , first OPEN 5V_EN, and delay 210ms before open SPK_EN
 
-	if(OUT_uP_SPK_EN==pinID && PAD_P92L==AX_MicroP_getPadModel()){		
+	if( OUT_uP_SPK_EN==pinID && (PAD_P92L==AX_MicroP_getPadModel()||PAD_P93L==AX_MicroP_getPadModel()) ){		
 		if(0==AX_MicroP_getGPIOOutputPinLevel(OUT_uP_5V_PWR_EN)){
 			printk("[%s][workaround] 5V_EN is off, enable and then delay 210ms\r\n", __FUNCTION__);
 			uP_nuvoton_write_reg(MICROP_GPIO_OUTPUT_BIT_SET, &sel_offset_5V_EN );

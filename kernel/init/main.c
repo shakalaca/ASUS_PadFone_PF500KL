@@ -237,12 +237,24 @@ EXPORT_SYMBOL(g_ASUS_hwID);
 		g_ASUS_hwID = A91_ER1;
 		strcat(hwid_info,str);
 		printk("Kernel HW ID = A91_ER1\n");
-	}		
+	}
+	else if ( strcmp("PF500KL_2_ER1", str) == 0 )
+	{
+		g_ASUS_hwID = A91_ER1;
+		strcat(hwid_info,str);
+		printk("Kernel HW ID = PF500KL_2_ER1\n");
+	}
 	else if ( strcmp("A91_ER2", str) == 0 )
 	{
 		g_ASUS_hwID = A91_ER2;
 		strcat(hwid_info,str);
 		printk("Kernel HW ID = A91_ER2\n");
+	}
+	else if ( strcmp("PF500KL_2", str) == 0 )
+	{
+		g_ASUS_hwID = A91_ER2;
+		strcat(hwid_info,str);
+		printk("Kernel HW ID = PF500KL_2\n");
 	}
 	else if ( strcmp("A91_PR", str) == 0 )
 	{
