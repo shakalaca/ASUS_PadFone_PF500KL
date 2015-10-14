@@ -75,7 +75,11 @@ static void *emergency_dload_mode_addr;
 
 /* Download mode master kill-switch */
 static int dload_set(const char *val, struct kernel_param *kp);
+#ifdef ASUS_SHIP_BUILD
+static int download_mode = 0;
+#else
 static int download_mode = 1;
+#endif
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 

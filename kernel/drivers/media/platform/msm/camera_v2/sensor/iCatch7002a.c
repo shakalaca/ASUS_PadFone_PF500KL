@@ -105,8 +105,8 @@ static unsigned int b_fw_is_valid = 1;
 //struct pm_qos_request pm_qos_req_list;
 
 static bool g_spi_is_support_1M = true;
-static char  BIN_FILE_WITH_PATH[] = "/data/asusfw/camera/BOOT.BIN";
-static char  BIN_FILE_WITH_PATH_A91[] = "/data/asusfw/camera/BOOT_A91.BIN";
+static char  BIN_FILE_WITH_PATH[] = "/asusfw/camera/BOOT.BIN";
+static char  BIN_FILE_WITH_PATH_A91[] = "/asusfw/camera/BOOT_A91.BIN";
 static char* UPDATE_FILE_WITH_PATH;
 static int iCatch_is_updating = 0;
 static bool g_enable_roi_debug = false;

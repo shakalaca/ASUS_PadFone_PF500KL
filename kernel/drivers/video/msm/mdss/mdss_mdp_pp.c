@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
+#include <linux/gpio.h>	//+++ ASUS BSP Bernard: to distinguish between phone and pad
 
 struct mdp_csc_cfg mdp_csc_convert[MDSS_MDP_MAX_CSC] = {
 	[MDSS_MDP_CSC_RGB2RGB] = {
@@ -1618,6 +1619,7 @@ static int pp_dspp_setup(u32 disp_num, struct mdss_mdp_mixer *mixer)
 		pgc_config = &mdss_pp_res->pgc_disp_cfg[disp_num];
 		if (pgc_config->flags & MDP_PP_OPS_WRITE) {
 			addr = base + MDSS_MDP_REG_DSPP_GC_BASE;
+			printk("[Display] %s: Update ARGC lut\n", __func__);
 			pp_update_argc_lut(addr, pgc_config);
 		}
 		if (pgc_config->flags & MDP_PP_OPS_DISABLE)
@@ -3970,7 +3972,7 @@ static int mdss_ad_init_checks(struct msm_fb_data_type *mfd)
 		return -ENODEV;
 	}
 
-	if (ad_mfd->panel_info->type == DTV_PANEL) {
+    if (ad_mfd->panel_info->type == DTV_PANEL && !(gpio_get_value(75))) { /*+++ ASUS BSP Bernard: to distinguish between phone and pad*/
 		pr_debug("AD not supported on external display\n");
 		return ret;
 	}
