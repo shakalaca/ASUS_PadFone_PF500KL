@@ -180,7 +180,8 @@ int __init device_gpio_init(void)
 	     break;	
 
 		case PF500KL_PR:
-		case PF500KL_MP:	 
+		case PF500KL_MP:
+		case PF500KL_MP2:
 		printk("[KERNEL] pf500kl gpio config table = PR\n"); 
 		   
 		msm_gpiomux_install(pf500kl_pr_msm8974_gpio_configs,

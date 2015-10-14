@@ -298,6 +298,12 @@ EXPORT_SYMBOL(g_ASUS_hwID);
 		strcat(hwid_info,str);
 		printk("Kernel HW ID = PF500KL_MP\n");
 	}
+	else if ( strcmp("PF500KL_MP2", str) == 0 )
+	{
+		g_ASUS_hwID = PF500KL_MP2;
+		strcat(hwid_info,str);
+		printk("Kernel HW ID = PF500KL_MP2\n");
+	}
  	else
  	{
  		g_ASUS_hwID = A91_ER1;
