@@ -1777,10 +1777,10 @@ int sis_cdev_open(struct inode *inode, struct file *filp)
 	g_updateProgress = 0;
 	sis_debug(DEBUG_IOCTL, "[Touch][sis9257] sis_cdev_open.\n");
 	sis_debug(DEBUG_POWER, "[Touch][sis9257] start update:%d\n", g_updateProgress);
+
 	if ( ts_bak == 0 )
 	return -13;
 
-	msleep(200);
 	if (ts_bak->use_irq)
 	{
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION (2, 6, 39) )
@@ -1804,8 +1804,6 @@ int sis_cdev_open(struct inode *inode, struct file *filp)
 
 	flush_workqueue(sis_wq);
 
-	msleep(200);
-
 	return 0; /* success */
 }
 
@@ -1815,7 +1813,6 @@ int sis_cdev_release(struct inode *inode, struct file *filp)
 	sis_debug(DEBUG_POWER, "[sis9257] %d -> %d\n", g_updateProgress, TOTAL_WRITE_COUNT);
 	g_updateProgress = TOTAL_WRITE_COUNT; //Desmond++
 
-	msleep(200);
 	if (ts_bak == 0)
 		return -13;
 

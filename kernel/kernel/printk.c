@@ -582,16 +582,20 @@ void kdb_syslog_data(char *syslog_data[4])
 }
 #endif	/* CONFIG_KGDB_KDB */
 
+static bool __read_mostly ignore_loglevel = 0;
 /*
  * Call the console drivers on a range of log_buf
  */
-static void __call_console_drivers(unsigned start, unsigned end)
+static void __call_console_drivers(unsigned start, unsigned end, int msg_log_level)
 {
 	struct console *con;
-
 	for_each_console(con) {
-		if (exclusive_console && con != exclusive_console)
-			continue;
+		if(strncmp(con->name,"logk",4) != 0){
+			if((msg_log_level >= console_loglevel && !ignore_loglevel))
+				continue;
+			if (exclusive_console && con != exclusive_console  )
+				continue;
+		}
 		if ((con->flags & CON_ENABLED) && con->write &&
 				(cpu_online(smp_processor_id()) ||
 				(con->flags & CON_ANYTIME)))
@@ -599,7 +603,6 @@ static void __call_console_drivers(unsigned start, unsigned end)
 	}
 }
 
-static bool __read_mostly ignore_loglevel;
 
 static int __init ignore_loglevel_setup(char *str)
 {
@@ -622,15 +625,14 @@ static void _call_console_drivers(unsigned start,
 {
 	trace_console(&LOG_BUF(0), start, end, log_buf_len);
 
-	if ((msg_log_level < console_loglevel || ignore_loglevel) &&
-			console_drivers && start != end) {
+	if (console_drivers && start != end) {
 		if ((start & LOG_BUF_MASK) > (end & LOG_BUF_MASK)) {
 			/* wrapped write */
 			__call_console_drivers(start & LOG_BUF_MASK,
-						log_buf_len);
-			__call_console_drivers(0, end & LOG_BUF_MASK);
+						log_buf_len,msg_log_level);
+			__call_console_drivers(0, end & LOG_BUF_MASK,msg_log_level);
 		} else {
-			__call_console_drivers(start, end);
+			__call_console_drivers(start, end,msg_log_level);
 		}
 	}
 }
@@ -1403,14 +1405,14 @@ void suspend_console(void)
 
 void resume_console(void)
 {
-
+#if 1
 	int i;
-	int j;
+#endif
 	suspend_in_progress = 0;
 	ASUSEvtlog("[UTS] System Resume");
-
+#if 1
 	if (pm_pwrcs_ret) {
-		ASUSEvtlog("[PM] Suspended for %d.%03d secs ", pwrcs_time/100,pwrcs_time % 100);
+		//ASUSEvtlog("[PM] Suspended for %d.%03d secs ", pwrcs_time/100,pwrcs_time % 100);
 
 		if (gpio_irq_cnt>0) {
 			for (i=0;i<gpio_irq_cnt;i++)
@@ -1422,26 +1424,9 @@ void resume_console(void)
 				ASUSEvtlog("[PM] IRQs triggered: %d", gic_resume_irq[i]);
 			gic_irq_cnt=0;  //clear log count.
 		}
-
-		for(i = 0; i < MSM_MPM_REG_PENDING_WIDTH; i++){
-			if (mpm_pending_cont[i] > 0){
-				for(j = 0; j < mpm_pending_cont[i]; j++){
-					ASUSEvtlog("[PM] MPM pending.%d: 0x%08lx, mpm_irq: %d, apps_irq: %d\n", i, resume_mpm_pending_irq[i].pending, 
-						resume_mpm_pending_irq[i].mpm_irq[j], resume_mpm_pending_irq[i].apps_irq[j]);
-				}
-			}
-			
-			for (j = 0; j < MAX_MPM_PENDING_IRQ_COUNT; j++) {			
-				resume_mpm_pending_irq[i].mpm_irq[j] = 0;
-				resume_mpm_pending_irq[i].apps_irq[j] = 0;		
-			}			
-			mpm_pending_cont[i] = 0;
-			resume_mpm_pending_irq[i].pending = 0;
-		}	
-
 		pm_pwrcs_ret=0;
 	}
-
+#endif
 	if (!console_suspend_enabled)
 		return;
 	down(&console_sem);

@@ -43,14 +43,10 @@
 #include <linux/switch.h>
 #include "nt11306_firmware.h"
 
-//#define HOME_ROW_KEYLIGHT 1
-
 //ASUS_BSP HANS: add for led icon +++
 #include <linux/workqueue.h>
-#ifdef HOME_ROW_KEYLIGHT
 #include <linux/leds.h>
 #include <linux/pwm.h>
-#endif
 //ASUS_BSP HANS: add for led icon ---
 
 #if defined(CONFIG_FB)
@@ -77,10 +73,8 @@
 #endif
 
 //ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 #define LED_MAX_LEVEL 100
 #define LEVEL_TO_TABLE(x) (2*((x)/5))
-#endif
 //ASUS_BSP HANS: add for led icon ---
 
 #define TOTAL_COUNT 4080
@@ -121,7 +115,6 @@ static struct kobject *android_touch_kobj = NULL;
 struct switch_dev nv_sdev;
 
 //ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 struct leddev {
 	struct pwm_device *pwmb;
 	int period;
@@ -142,7 +135,6 @@ static int duty_table[] = {0,50,1,50,2,50,12,50,15,50,17,50,
 
 struct workqueue_struct *wq_led_icon;
 struct delayed_work icon_led_off_w, icon_led_on_w;
-#endif
 //ASUS_BSP HANS: add for led icon ---
 
 static struct work_struct nv_mode_w;
@@ -303,9 +295,6 @@ static void nv_write_rc_calibration_work(void)
 //ASUS_BSP HANS: temporary way to notify usb state +++
 void nv_touch_mode(int state)
 {
-	if(nvts == NULL || nvts->bad_data != 0)
-		return;
-
 	if(usb_state == 95 && state == 0){
 		return;
 	}
@@ -415,13 +404,12 @@ error:
 
 
 //ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 void led_init(struct leddev *leds)
 {
 	leds->pwmb = pwm_request(0,"keypad-touched");
 	pwm_enable(leds->pwmb);
 
-	leds->period = 50; //can't under 70000 in code base 2135
+	leds->period = 50;
 	leds->duty = 47;
 	leds->value = 10;
 	leds->duration = 2000; //in microseconds
@@ -565,7 +553,6 @@ static ssize_t period_duty_store(struct device *dev, struct device_attribute *at
 	queue_delayed_work(wq_led_icon, &icon_led_off_w, msecs_to_jiffies(home_led.duration));
 	return count;
 }
-#endif
 //ASUS_BSP HANS: add for led icon ---
 
 
@@ -715,7 +702,6 @@ static int fb_notifier_callback(struct notifier_block *self,unsigned long event,
 			queue_delayed_work(g_nv_wq_attach_detach, &g_resume_work_nv, msecs_to_jiffies(2));
 
 			//ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 			if(delayed_work_pending(&icon_led_on_w)){
 				cancel_delayed_work_sync(&icon_led_on_w);
 			}
@@ -726,19 +712,16 @@ static int fb_notifier_callback(struct notifier_block *self,unsigned long event,
 			}
 
 			queue_delayed_work(wq_led_icon, &icon_led_off_w, msecs_to_jiffies(home_led.duration));
-#endif
 			//ASUS_BSP HANS: add for led icon ---
 
 		}
 		else if (*blank == FB_BLANK_POWERDOWN){
 			//ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 			if(delayed_work_pending(&icon_led_off_w)){
 				cancel_delayed_work_sync(&icon_led_off_w);
 			}
 
 			led_icon_trigger(&home_led , 0);
-#endif
 			//ASUS_BSP HANS: add for led icon ---
 						
  			nt11003_ts_suspend(ts_dev_data->client,PMSG_SUSPEND);
@@ -1439,12 +1422,10 @@ DEVICE_ATTR(TPID, NV_RO_ATTR,TPID, NULL);
 DEVICE_ATTR(about_phone, NV_RO_ATTR,about_phone, NULL);
 DEVICE_ATTR(rc_calibration, NV_RW_ATTR, rc_calibration_result, rc_calibration); //ASUS_BSP HANS: fw v23 need RC cal++
 //ASUS_BSP HANS: add for led +++
-#ifdef HOME_ROW_KEYLIGHT
 DEVICE_ATTR(key_led, NV_RW_ATTR, led_icon_show, led_icon_store);
 DEVICE_ATTR(user_mode, NV_RW_ATTR, led_mode_show, led_mode_store);
 DEVICE_ATTR(screen_unlocked, NV_WO_ATTR, NULL, screen_unlocked_store);
 DEVICE_ATTR(period_duty, NV_RW_ATTR, period_duty_show, period_duty_store);
-#endif
 //ASUS_BSP HANS: add for led ---
 DEVICE_ATTR(update_progress, NV_RO_ATTR, fw_update_progress, NULL);
 DEVICE_ATTR(update_result, NV_RO_ATTR, fw_update_result, NULL);
@@ -1462,12 +1443,10 @@ static struct attribute *nt_attrs[] = {
 	&dev_attr_about_phone.attr,
 	&dev_attr_rc_calibration.attr, //ASUS_BSP HANS: fw v23 need RC cal ++
 //ASUS_BSP HANS: add for led +++
-#ifdef HOME_ROW_KEYLIGHT
 	&dev_attr_key_led.attr,
 	&dev_attr_user_mode.attr,
 	&dev_attr_screen_unlocked.attr,
 	&dev_attr_period_duty.attr,
-#endif
 //ASUS_BSP HANS: add for led ---
 	&dev_attr_update_progress.attr,
 	&dev_attr_update_result.attr,
@@ -1543,7 +1522,6 @@ static void nt11003_ts_work_func(struct work_struct *work)
 			finger_count[index] = 0;
 
 			//ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 			if(delayed_work_pending(&icon_led_off_w)) {
 				cancel_delayed_work_sync(&icon_led_off_w);
 			}
@@ -1554,7 +1532,6 @@ static void nt11003_ts_work_func(struct work_struct *work)
 			}
 			else
 				queue_delayed_work(wq_led_icon, &icon_led_off_w, msecs_to_jiffies(home_led.duration));
-#endif
 			//ASUS_BSP HANS: add for led icon ---
 
 		}
@@ -1575,13 +1552,11 @@ static void nt11003_ts_work_func(struct work_struct *work)
 			// ASUS_BSP : Add report location ---
 
 			//ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 			if(delayed_work_pending(&icon_led_off_w)){
 				cancel_delayed_work_sync(&icon_led_off_w);
 			}
 
 			led_icon_trigger(&home_led, home_led.value);
-#endif
 			//ASUS_BSP HANS: add for led icon ---
 
 			if((input_x > 1090 )||(input_y > 1970))	continue;	//ASUS_BSP Deeo : Fix conditition +++
@@ -1651,13 +1626,11 @@ static void attach_nv_padstation_work(struct work_struct *work)
 	}
 
 //ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 	if(delayed_work_pending(&icon_led_off_w)){
 		cancel_delayed_work_sync(&icon_led_off_w);
 	}
 
 	led_icon_trigger(&home_led, 0);
-#endif
 //ASUS_BSP HANS: add for led icon ---
 
 	printk("[Touch_N] attach_padstation_work()--\n");
@@ -1908,13 +1881,11 @@ static int nt11003_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	//ASUS_BSP : Add touch deriver attribute ---
 
 	//ASUS_BSP HANS: add for led icon +++
-#ifdef HOME_ROW_KEYLIGHT
 	led_init(&home_led);
 
 	wq_led_icon = create_singlethread_workqueue("ICON_LED_WQ");
 	INIT_DELAYED_WORK(&icon_led_off_w,led_icon_turnoff);
 	INIT_DELAYED_WORK(&icon_led_on_w,led_icon_turnon);
-#endif
 	//ASUS_BSP HANS: add for led icon ---
 
 

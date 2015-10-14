@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -83,6 +83,7 @@ struct lpm_system_state {
 
 static struct lpm_system_state sys_state;
 static bool suspend_in_progress;
+static int64_t suspend_time;
 
 struct lpm_lookup_table {
 	uint32_t modes;
@@ -213,7 +214,6 @@ static int lpm_set_l2_mode(struct lpm_system_state *system_state,
 
 	switch (sleep_mode) {
 	case MSM_SPM_L2_MODE_POWER_COLLAPSE:
-		//pr_info("Configuring for L2 power collapse\n");
 		msm_pm_set_l2_flush_flag(MSM_SCM_L2_OFF);
 		break;
 	case MSM_SPM_L2_MODE_GDHS:
@@ -254,6 +254,8 @@ static void lpm_system_level_update(void)
 
 	if (num_powered_cores == 1)
 		allowed_l2_mode = MSM_SPM_L2_MODE_POWER_COLLAPSE;
+	else if (sys_state.allow_synched_levels)
+		allowed_l2_mode = MSM_SPM_L2_MODE_POWER_COLLAPSE;
 	else
 		allowed_l2_mode = default_l2_mode;
 	max_l2_mode = min(allowed_l2_mode, sysfs_dbg_l2_mode);
@@ -271,7 +273,7 @@ static int lpm_system_mode_select(
 {
 	int best_level = -1;
 	int i;
-	uint32_t best_level_pwr = ~0UL;
+	uint32_t best_level_pwr = ~0U;
 	uint32_t pwr;
 	uint32_t latency_us = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
 
@@ -342,7 +344,7 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 
 	spin_lock(&system_state->sync_lock);
 	if (index < 0 ||
- 			num_powered_cores != system_state->num_cores_in_sync) {
+			num_powered_cores != system_state->num_cores_in_sync) {
 		spin_unlock(&system_state->sync_lock);
 		return;
 	}
@@ -492,7 +494,7 @@ static void msm_pm_set_timer(uint32_t modified_time_us)
 static noinline int lpm_cpu_power_select(struct cpuidle_device *dev, int *index)
 {
 	int best_level = -1;
-	uint32_t best_level_pwr = ~0UL;
+	uint32_t best_level_pwr = ~0U;
 	uint32_t latency_us = pm_qos_request(PM_QOS_CPU_DMA_LATENCY);
 	uint32_t sleep_us =
 		(uint32_t)(ktime_to_us(tick_nohz_get_sleep_length()));
@@ -723,8 +725,6 @@ static void lpm_enter_low_power(struct lpm_system_state *system_state,
 	int idx;
 	struct lpm_cpu_level *cpu_level = &system_state->cpu_level[cpu_index];
 
-	cpu_level = &system_state->cpu_level[cpu_index];
-
 	lpm_cpu_prepare(system_state, cpu_index, from_idle);
 
 	idx = lpm_system_select(system_state, cpu_index, from_idle);
@@ -758,7 +758,7 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	do_div(time, 1000);
 	dev->last_residency = (int)time;
 	local_irq_enable();
-	return index;
+	return idx;
 }
 
 static int lpm_suspend_enter(suspend_state_t state)
@@ -782,6 +782,11 @@ static int lpm_suspend_enter(suspend_state_t state)
 
 static int lpm_suspend_prepare(void)
 {
+	struct timespec ts;
+
+	getnstimeofday(&ts);
+	suspend_time = timespec_to_ns(&ts);
+
 	suspend_in_progress = true;
 	msm_mpm_suspend_prepare();
 	return 0;
@@ -789,6 +794,12 @@ static int lpm_suspend_prepare(void)
 
 static void lpm_suspend_wake(void)
 {
+	struct timespec ts;
+
+	getnstimeofday(&ts);
+	suspend_time = timespec_to_ns(&ts) - suspend_time;
+	msm_pm_add_stat(MSM_PM_STAT_SUSPEND, suspend_time);
+
 	msm_mpm_suspend_wake();
 	suspend_in_progress = false;
 }
@@ -972,9 +983,8 @@ static int lpm_system_probe(struct platform_device *pdev)
 			goto fail;
 		}
 
-		if (l->l2_mode == MSM_SPM_L2_MODE_GDHS ||
-				l->l2_mode == MSM_SPM_L2_MODE_POWER_COLLAPSE)
-			l->notify_rpm = true;
+		key = "qcom,send-rpm-sleep-set";
+		l->notify_rpm = of_property_read_bool(node, key);
 
 		if (l->l2_mode >= MSM_SPM_L2_MODE_GDHS)
 			l->sync = true;

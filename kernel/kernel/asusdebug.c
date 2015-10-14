@@ -16,7 +16,7 @@
 #include <linux/list.h>
 //#include <linux/asus_ver.h>
 #include <linux/syscalls.h>
-#include <linux/earlysuspend.h>
+#include <linux/earlysuspend.h> 
 #include <linux/delay.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
@@ -39,16 +39,16 @@ struct rt_mutex fake_rtmutex;
 
 int asus_rtc_read_time(struct rtc_time *tm)
 {
-    struct timespec ts;
-
+    struct timespec ts; 
+    
     getnstimeofday(&ts);
     ts.tv_sec -= sys_tz.tz_minuteswest * 60;
     rtc_time_to_tm(ts.tv_sec, tm);
     printk("now %04d%02d%02d-%02d%02d%02d, tz=%d\r\n", tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, sys_tz.tz_minuteswest);
-    return 0;
+    return 0; 
 }
 EXPORT_SYMBOL(asus_rtc_read_time);
-#if 1
+#if 1   
 //--------------------   debug message logger   ------------------------------------
 struct workqueue_struct *ASUSDebugMsg_workQueue;
 EXPORT_SYMBOL(ASUSDebugMsg_workQueue);
@@ -73,13 +73,13 @@ int save_log(const char *f, ...)
     va_list args;
     int len;
 
-    if (g_iPtr < PHONE_HANG_LOG_SIZE)
+    if (g_iPtr < PHONE_HANG_LOG_SIZE) 
     {
         va_start(args, f);
         len = vsnprintf(g_phonehang_log + g_iPtr, PHONE_HANG_LOG_SIZE - g_iPtr, f, args);
         va_end(args);
         //printk("%s", g_phonehang_log + g_iPtr);
-        if (g_iPtr < PHONE_HANG_LOG_SIZE)
+        if (g_iPtr < PHONE_HANG_LOG_SIZE) 
         {
             g_iPtr += len;
             return 0;
@@ -126,7 +126,7 @@ struct thread_info_save
     struct thread_info_save* pnext;
 };
 static char * print_state(long state)
-{
+{   
     int i;
     if(state == 0)
         return task_state_array[0];
@@ -136,7 +136,7 @@ static char * print_state(long state)
             return task_state_array[i];
     }
     return "NOTFOUND";
-
+    
 }
 
 /*
@@ -205,7 +205,7 @@ void show_stack1(struct task_struct *p1, void *p2)
     trace.skip      = 0;
     save_stack_trace_asus(p1, &trace);
 
-    for (i = 0; i < trace.nr_entries; i++)
+    for (i = 0; i < trace.nr_entries; i++) 
     {
         save_log("[<%p>] %pS\n", (void *)entries[i], (void *)entries[i]);
     }
@@ -219,14 +219,14 @@ void print_all_thread_info(void)
     struct task_struct *pts;
     struct thread_info *pti;
     struct rtc_time tm;
-    asus_rtc_read_time(&tm);
-
+    asus_rtc_read_time(&tm);    
+    
     #if 1
     g_phonehang_log = (char*)PHONE_HANG_LOG_BUFFER;//phys_to_virt(PHONE_HANG_LOG_BUFFER);
     g_iPtr = 0;
     memset(g_phonehang_log, 0, PHONE_HANG_LOG_SIZE);
     #endif
-
+    
     save_log("PhoneHang-%04d%02d%02d-%02d%02d%02d.txt  ---  ASUS_SW_VER : %s----------------------------------------------\r\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ASUS_SW_VER);
     save_log(" pID----ppID----NAME----------------SumTime---vruntime--SPri-NPri-State----------PmpCnt-Binder----Waiting\r\n");
 
@@ -235,25 +235,25 @@ void print_all_thread_info(void)
         pti = (struct thread_info *)((int)(pts->stack)  & ~(THREAD_SIZE - 1));
         save_log("-----------------------------------------------------\r\n");
         save_log(" %-7d", pts->pid);
-
+        
         if(pts->parent)
             save_log("%-8d", pts->parent->pid);
         else
             save_log("%-8d", 0);
-
+        
         save_log("%-20s", pts->comm);
         save_log("%lld.%06ld", SPLIT_NS(pts->se.sum_exec_runtime));
         save_log("     %lld.%06ld     ", SPLIT_NS(pts->se.vruntime));
         save_log("%-5d", pts->static_prio);
         save_log("%-5d", pts->normal_prio);
         save_log("%-15s", print_state((pts->state & TASK_REPORT) | pts->exit_state));
-
-#ifndef ASUS_SHIP_BUILD
-//        save_log("%-6d", pts->binder_call_to_proc_pid);
+        
+#ifndef ASUS_SHIP_BUILD        
+//        save_log("%-6d", pts->binder_call_to_proc_pid);    
 #endif
-        save_log("%-6d", pti->preempt_count);
-
-
+        save_log("%-6d", pti->preempt_count);    
+        
+        
         if(pti->pWaitingMutex != &fake_mutex && pti->pWaitingMutex != NULL)
         {
 			if (pti->pWaitingMutex->name)
@@ -263,7 +263,7 @@ void print_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->name == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug)
 			{
 				save_log(" Owned by pID(%d)", pti->pWaitingMutex->mutex_owner_asusdebug->pid);
@@ -271,7 +271,7 @@ void print_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->mutex_owner_asusdebug == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug->comm)
 			{
 				save_log(" %s",pti->pWaitingMutex->mutex_owner_asusdebug->comm);
@@ -304,9 +304,9 @@ void print_all_thread_info(void)
 
 	save_log("\r\n");
         show_stack1(pts, NULL);
-
+        
         save_log("\r\n");
-
+        
         if(!thread_group_empty(pts))
         {
             struct task_struct *p1 = next_thread(pts);
@@ -314,23 +314,23 @@ void print_all_thread_info(void)
             {
                 pti = (struct thread_info *)((int)(p1->stack)  & ~(THREAD_SIZE - 1));
                 save_log(" %-7d", p1->pid);
-
+                
                 if(pts->parent)
                     save_log("%-8d", p1->parent->pid);
                 else
                     save_log("%-8d", 0);
-
+                
                 save_log("%-20s", p1->comm);
                 save_log("%lld.%06ld", SPLIT_NS(p1->se.sum_exec_runtime));
                 save_log("     %lld.%06ld     ", SPLIT_NS(p1->se.vruntime));
                 save_log("%-5d", p1->static_prio);
                 save_log("%-5d", p1->normal_prio);
                 save_log("%-15s", print_state((p1->state & TASK_REPORT) | p1->exit_state));
-#ifndef ASUS_SHIP_BUILD
-//                save_log("%-6d", pts->binder_call_to_proc_pid);
-#endif
-                save_log("%-6d", pti->preempt_count);
-
+#ifndef ASUS_SHIP_BUILD                
+//                save_log("%-6d", pts->binder_call_to_proc_pid);    
+#endif                
+                save_log("%-6d", pti->preempt_count);    
+                
         if(pti->pWaitingMutex != &fake_mutex && pti->pWaitingMutex != NULL)
         {
 			if (pti->pWaitingMutex->name)
@@ -340,7 +340,7 @@ void print_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->name == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug)
 			{
 				save_log(" Owned by pID(%d)", pti->pWaitingMutex->mutex_owner_asusdebug->pid);
@@ -348,7 +348,7 @@ void print_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->mutex_owner_asusdebug == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug->comm)
 			{
 				save_log(" %s",pti->pWaitingMutex->mutex_owner_asusdebug->comm);
@@ -365,7 +365,7 @@ void print_all_thread_info(void)
 	        else
 				printk("pti->pWaitingCompletion->name == NULL\r\n");
 		}
-
+   
         if(pti->pWaitingRTMutex != &fake_rtmutex && pti->pWaitingRTMutex != NULL)
         {
 			struct task_struct *temp = rt_mutex_owner(pti->pWaitingRTMutex);
@@ -380,17 +380,17 @@ void print_all_thread_info(void)
 		}
                 save_log("\r\n");
                 show_stack1(p1, NULL);
-
+                
                 save_log("\r\n");
                 p1 = next_thread(p1);
             }while(p1 != pts);
         }
         save_log("-----------------------------------------------------\r\n\r\n\r\n");
-
+        
     }
     save_log("\r\n\r\n\r\n\r\n");
-
-
+    
+    
     #if 1
     //iounmap(g_phonehang_log);
     #endif
@@ -402,7 +402,7 @@ int find_thread_info(struct task_struct *pts, int force)
     struct thread_info *pti;
     struct thread_info_save *ptis, *ptis_ptr;
     u64 vruntime = 0, sum_exec_runtime;
-
+    
     if(ptis_head != NULL)
     {
         ptis = ptis_head->pnext;
@@ -414,8 +414,8 @@ int find_thread_info(struct task_struct *pts, int force)
             if(ptis->pid == pts->pid && ptis->pts == pts)
             {
                 //printk("found pts=%x\n\r", pts);
-                ptis_ptr = ptis;
-                break;
+                ptis_ptr = ptis; 
+                break; 
             }
             ptis = ptis->pnext;
         }
@@ -435,22 +435,22 @@ int find_thread_info(struct task_struct *pts, int force)
         {
             pti = (struct thread_info *)((int)(pts->stack)  & ~(THREAD_SIZE - 1));
             save_log(" %-7d", pts->pid);
-
+            
             if(pts->parent)
                 save_log("%-8d", pts->parent->pid);
             else
                 save_log("%-8d", 0);
-
+            
             save_log("%-20s", pts->comm);
             save_log("%lld.%06ld", SPLIT_NS(sum_exec_runtime));
             if(nsec_high(sum_exec_runtime) > 1000)
                 save_log(" ******");
-            save_log("     %lld.%06ld     ", SPLIT_NS(vruntime));
+            save_log("     %lld.%06ld     ", SPLIT_NS(vruntime));            
             save_log("%-5d", pts->static_prio);
             save_log("%-5d", pts->normal_prio);
             save_log("%-15s", print_state(pts->state));
-            save_log("%-6d", pti->preempt_count);
-
+            save_log("%-6d", pti->preempt_count);    
+            
         if(pti->pWaitingMutex != &fake_mutex && pti->pWaitingMutex != NULL)
         {
 			if (pti->pWaitingMutex->name)
@@ -460,7 +460,7 @@ int find_thread_info(struct task_struct *pts, int force)
 			}
 			else
 				printk("pti->pWaitingMutex->name == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug)
 			{
 				save_log(" Owned by pID(%d)", pti->pWaitingMutex->mutex_owner_asusdebug->pid);
@@ -468,7 +468,7 @@ int find_thread_info(struct task_struct *pts, int force)
 			}
 			else
 				printk("pti->pWaitingMutex->mutex_owner_asusdebug == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug->comm)
 			{
 				save_log(" %s",pti->pWaitingMutex->mutex_owner_asusdebug->comm);
@@ -485,7 +485,7 @@ int find_thread_info(struct task_struct *pts, int force)
 				else
 					printk("pti->pWaitingCompletion->name == NULL\r\n");
 			}
-
+    
         if(pti->pWaitingRTMutex != &fake_rtmutex && pti->pWaitingRTMutex != NULL)
         {
 			struct task_struct *temp = rt_mutex_owner(pti->pWaitingRTMutex);
@@ -498,16 +498,16 @@ int find_thread_info(struct task_struct *pts, int force)
 			else
 				printk("pti->pWaitingRTMutex->temp->comm == NULL\r\n");
 		}
-
+           
             save_log("\r\n");
-
+            
             show_stack1(pts, NULL);
             save_log("\r\n");
         }
-        else
+        else 
             return 0;
     }
-    return 1;
+    return 1;    
 
 }
 
@@ -521,7 +521,7 @@ struct worker {
 	struct work_struct	*current_work;	/* L: work being processed */
 	int *current_cwq; /* L: current_work's cwq */
 	struct list_head	scheduled;	/* L: scheduled works */
-	struct task_struct	*task;		/* I: worker task */
+	struct task_struct	*task;		/* I: worker task */	
 };
 
 void save_all_thread_info(void)
@@ -532,18 +532,18 @@ void save_all_thread_info(void)
 #ifndef ASUS_SHIP_BUILD
 //    struct worker *pworker ;
 #endif
-
+    
     struct rtc_time tm;
-    asus_rtc_read_time(&tm);
+    asus_rtc_read_time(&tm);    
     #if 1
     g_phonehang_log = (char*)PHONE_HANG_LOG_BUFFER;//phys_to_virt(PHONE_HANG_LOG_BUFFER);
     g_iPtr = 0;
     memset(g_phonehang_log, 0, PHONE_HANG_LOG_SIZE);
     #endif
-
+    
     save_log("ASUSSlowg-%04d%02d%02d-%02d%02d%02d.txt  ---  ASUS_SW_VER : %s----------------------------------------------\r\n", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ASUS_SW_VER);
     save_log(" pID----ppID----NAME----------------SumTime---vruntime--SPri-NPri-State----------PmpCnt-binder----Waiting\r\n");
-
+    
 
     if(ptis_head != NULL)
     {
@@ -558,18 +558,18 @@ void save_all_thread_info(void)
         kfree(ptis_head);
         ptis_head = NULL;
     }
-
+    
     if(ptis_head == NULL)
     {
         ptis_ptr = ptis_head = kmalloc(sizeof( struct thread_info_save), GFP_KERNEL);
         if(!ptis_head)
         {
-            printk("kmalloc ptis_head failure\n");
+            printk("kmalloc ptis_head failure\n"); 
             return;
         }
         memset(ptis_head, 0, sizeof( struct thread_info_save));
-    }
-
+    }    
+    
     for_each_process(pts)
     {
         pti = (struct thread_info *)((int)(pts->stack)  & ~(THREAD_SIZE - 1));
@@ -577,31 +577,31 @@ void save_all_thread_info(void)
         ptis = kmalloc(sizeof( struct thread_info_save), GFP_KERNEL);
         if(!ptis)
         {
-            printk("kmalloc ptis failure\n");
-            return;
+            printk("kmalloc ptis failure\n"); 
+            return;        
         }
-        memset(ptis, 0, sizeof( struct thread_info_save));
-
+        memset(ptis, 0, sizeof( struct thread_info_save)); 
+        
         save_log("-----------------------------------------------------\r\n");
         save_log(" %-7d", pts->pid);
         if(pts->parent)
             save_log("%-8d", pts->parent->pid);
         else
             save_log("%-8d", 0);
-
+        
         save_log("%-20s", pts->comm);
         save_log("%lld.%06ld", SPLIT_NS(pts->se.sum_exec_runtime));
         save_log("     %lld.%06ld     ", SPLIT_NS(pts->se.vruntime));
         save_log("%-5d", pts->static_prio);
         save_log("%-5d", pts->normal_prio);
         save_log("%-15s", print_state((pts->state & TASK_REPORT) | pts->exit_state));
-#ifndef ASUS_SHIP_BUILD
-//        save_log("call_proc:%-6d  ", pts->binder_call_to_proc_pid);
- //       save_log("call_thread:%-6d  ", pts->binder_call_to_thread_pid);
- //       save_log("call_code:%-6d  ", pts->binder_call_code);
+#ifndef ASUS_SHIP_BUILD        
+//        save_log("call_proc:%-6d  ", pts->binder_call_to_proc_pid);    
+ //       save_log("call_thread:%-6d  ", pts->binder_call_to_thread_pid); 
+ //       save_log("call_code:%-6d  ", pts->binder_call_code); 
 #endif
-        save_log("%-6d", pti->preempt_count);
-
+        save_log("%-6d", pti->preempt_count);    
+        
         if(pti->pWaitingMutex != &fake_mutex && pti->pWaitingMutex != NULL)
         {
 			if (pti->pWaitingMutex->name)
@@ -611,7 +611,7 @@ void save_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->name == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug)
 			{
 				save_log(" Owned by pID(%d)", pti->pWaitingMutex->mutex_owner_asusdebug->pid);
@@ -619,7 +619,7 @@ void save_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->mutex_owner_asusdebug == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug->comm)
 			{
 				save_log(" %s",pti->pWaitingMutex->mutex_owner_asusdebug->comm);
@@ -648,7 +648,7 @@ void save_all_thread_info(void)
 			else
 				printk("pti->pWaitingRTMutex->temp->comm == NULL\r\n");
 		}
-
+		
 #if 0//ndef ASUS_SHIP_BUILD
 	if ( strncmp(pts->comm, "kworker", strlen("kworker")) ==0 )
 	{
@@ -668,20 +668,20 @@ void save_all_thread_info(void)
 
         save_log("\r\n");
         show_stack1(pts, NULL);
-
+        
         save_log("\r\n");
-
+         
 
         ptis->pid = pts->pid;
         ptis->pts = pts;
         ptis->sum_exec_runtime = pts->se.sum_exec_runtime;
         //printk("saving %d, sum_exec_runtime  %lld.%06ld  \n\r", ptis->pid, SPLIT_NS(ptis->sum_exec_runtime));
-        ptis->vruntime = pts->se.vruntime;
-        //printk("newing ptis %x utime=%d, stime=%d\n\r", ptis, pts->utime, pts->stime);
-
+        ptis->vruntime = pts->se.vruntime;  
+        //printk("newing ptis %x utime=%d, stime=%d\n\r", ptis, pts->utime, pts->stime);          
+          
         ptis_ptr->pnext = ptis;
         ptis_ptr = ptis;
-
+        
         if(!thread_group_empty(pts))
         {
             struct task_struct *p1 = next_thread(pts);
@@ -692,40 +692,40 @@ void save_all_thread_info(void)
                 ptis = kmalloc(sizeof( struct thread_info_save), GFP_KERNEL);
                 if(!ptis)
                 {
-                    printk("kmalloc ptis 2 failure\n");
-                    return;
+                    printk("kmalloc ptis 2 failure\n"); 
+                    return;        
                 }
-                memset(ptis, 0, sizeof( struct thread_info_save));
-
+                memset(ptis, 0, sizeof( struct thread_info_save)); 
+        
                 ptis->pid = p1->pid;
                 ptis->pts = p1;
                 ptis->sum_exec_runtime = p1->se.sum_exec_runtime;
                 //printk("saving %d, sum_exec_runtime  %lld.%06ld  \n\r", ptis->pid, SPLIT_NS(ptis->sum_exec_runtime));
-                ptis->vruntime = p1->se.vruntime;
-                //printk("newing ptis %x utime=%d, stime=%d\n\r", ptis, pts->utime, pts->stime);
-
+                ptis->vruntime = p1->se.vruntime;  
+                //printk("newing ptis %x utime=%d, stime=%d\n\r", ptis, pts->utime, pts->stime);          
+                
                 ptis_ptr->pnext = ptis;
                 ptis_ptr = ptis;
                 save_log(" %-7d", p1->pid);
-
+                
                 if(pts->parent)
                     save_log("%-8d", p1->parent->pid);
                 else
                     save_log("%-8d", 0);
-
+                
                 save_log("%-20s", p1->comm);
                 save_log("%lld.%06ld", SPLIT_NS(p1->se.sum_exec_runtime));
                 save_log("     %lld.%06ld     ", SPLIT_NS(p1->se.vruntime));
                 save_log("%-5d", p1->static_prio);
                 save_log("%-5d", p1->normal_prio);
                 save_log("%-15s", print_state((p1->state & TASK_REPORT) | p1->exit_state));
-#ifndef ASUS_SHIP_BUILD
-//                save_log("call_proc:%-6d  ", pts->binder_call_to_proc_pid);
- //               save_log("call_thread:%-6d  ", pts->binder_call_to_thread_pid);
- //               save_log("call_code:%-6d  ", pts->binder_call_code);
+#ifndef ASUS_SHIP_BUILD        
+//                save_log("call_proc:%-6d  ", pts->binder_call_to_proc_pid);    
+ //               save_log("call_thread:%-6d  ", pts->binder_call_to_thread_pid); 
+ //               save_log("call_code:%-6d  ", pts->binder_call_code); 
 #endif
-                save_log("%-6d", pti->preempt_count);
-
+                save_log("%-6d", pti->preempt_count);    
+                
         if(pti->pWaitingMutex != &fake_mutex && pti->pWaitingMutex != NULL)
         {
 			if (pti->pWaitingMutex->name)
@@ -735,7 +735,7 @@ void save_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->name == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug)
 			{
 				save_log(" Owned by pID(%d)", pti->pWaitingMutex->mutex_owner_asusdebug->pid);
@@ -743,7 +743,7 @@ void save_all_thread_info(void)
 			}
 			else
 				printk("pti->pWaitingMutex->mutex_owner_asusdebug == NULL\r\n");
-
+				
 			if (pti->pWaitingMutex->mutex_owner_asusdebug->comm)
 			{
 				save_log(" %s",pti->pWaitingMutex->mutex_owner_asusdebug->comm);
@@ -760,7 +760,7 @@ void save_all_thread_info(void)
 	        else
 				printk("pti->pWaitingCompletion->name == NULL\r\n");
 		}
-
+  
         if(pti->pWaitingRTMutex != &fake_rtmutex && pti->pWaitingRTMutex != NULL)
         {
 			struct task_struct *temp = rt_mutex_owner(pti->pWaitingRTMutex);
@@ -775,14 +775,14 @@ void save_all_thread_info(void)
 		}
                 save_log("\r\n");
                 show_stack1(p1, NULL);
-
+                
                 save_log("\r\n");
-
+                
                 p1 = next_thread(p1);
             }while(p1 != pts);
-        }
-
-
+        }        
+        
+        
     }
 
 }
@@ -793,7 +793,7 @@ void delta_all_thread_info(void)
 {
     struct task_struct *pts;
     int ret = 0, ret2 = 0;
-
+    
     save_log("\r\nDELTA INFO----------------------------------------------------------------------------------------------\r\n");
     save_log(" pID----ppID----NAME----------------SumTime---vruntime--SPri-NPri-State----------PmpCnt----Waiting\r\n");
     for_each_process(pts)
@@ -810,9 +810,9 @@ void delta_all_thread_info(void)
                 p1 = next_thread(p1);
             }while(p1 != pts);
             if(ret2 && !ret)
-                find_thread_info(pts, 1);
-        }
-        if(ret || ret2)
+                find_thread_info(pts, 1);        
+        }    
+        if(ret || ret2)          
             save_log("-----------------------------------------------------\r\n\r\n-----------------------------------------------------\r\n");
     }
     save_log("\r\n\r\n\r\n\r\n");
@@ -847,7 +847,7 @@ static ssize_t asusdebug_read(struct file *file, char __user *buf,
     if(g_read_pos < ASUS_MSK_GROUP)
     {
         sprintf(print_buf, "group %d: %02x\n", g_read_pos, debug_mask_setting[g_read_pos]);
-        /* Transfering data to user space */
+        /* Transfering data to user space */ 
         ret = strlen(print_buf);
         iret = copy_to_user(buf, print_buf, ret);
         g_read_pos ++;
@@ -893,11 +893,11 @@ void save_phone_hang_log(void)
             sys_close(file_handle);
         }
         deinitKernelEnv();
-
+        
     }
     if(g_phonehang_log && file_handle >0 && ret >0)
     {
-        g_phonehang_log[0] = 0;
+        g_phonehang_log[0] = 0;   
         //iounmap(g_phonehang_log);
     }
 }
@@ -910,14 +910,14 @@ void save_last_shutdown_log(char* filename)
     int file_handle;
     unsigned long long t;
     unsigned long nanosec_rem;
-
-    //~ asus_rtc_read_time(&tm);
+    
+    //~ asus_rtc_read_time(&tm);    
     t = cpu_clock(0);
 	nanosec_rem = do_div(t, 1000000000);
     last_shutdown_log = (char*)PRINTK_BUFFER;//phys_to_virt(PRINTK_BUFFER);
     last_shutdown_log_addr = (unsigned int *)((unsigned int)last_shutdown_log + (unsigned int)PRINTK_BUFFER_SLOT_SIZE);
     sprintf(messages, "/asdf/LastShutdown_%lu.%06lu.txt",
-				(unsigned long) t,
+				(unsigned long) t,      
 				nanosec_rem / 1000);
 
     initKernelEnv();
@@ -929,7 +929,7 @@ void save_last_shutdown_log(char* filename)
     } else {
 		printk("[ASDF] save_last_shutdown_error: [%d]\n", file_handle);
 	}
-    deinitKernelEnv();
+    deinitKernelEnv();          
 
 }
 
@@ -946,15 +946,15 @@ void save_rtb_log(void)
     int file_handle;
     unsigned long long t;
     unsigned long nanosec_rem;
-
-    //~ asus_rtc_read_time(&tm);
+    
+    //~ asus_rtc_read_time(&tm);    
     rtb_log = (char*)msm_rtb.rtb;
     t = cpu_clock(0);
 	nanosec_rem = do_div(t, 1000000000);
-    snprintf(rtb_log_path, sizeof(rtb_log_path)-1, "/asdf/rtb_%lu.%06lu.bin",
-				(unsigned long) t,
+    snprintf(rtb_log_path, sizeof(rtb_log_path)-1, "/asdf/rtb_%lu.%06lu.bin", 
+				(unsigned long) t,      
 				nanosec_rem / 1000);
-
+							
     initKernelEnv();
     file_handle = sys_open(rtb_log_path, O_CREAT|O_RDWR|O_SYNC, 0);
     if(!IS_ERR((const void *)file_handle))
@@ -964,8 +964,8 @@ void save_rtb_log(void)
     } else {
 		printk("[ASDF] save_rtb_log_error: [%d]\n", file_handle);
 	}
-    deinitKernelEnv();
-
+    deinitKernelEnv();  	
+    
 }
 #endif
 
@@ -1008,7 +1008,7 @@ typedef struct tzbsp_dump_cpu_ctx_s
     unsigned int fiq_r12;
     unsigned int fiq_r13;
     unsigned int fiq_r14;
-
+    
 } tzbsp_dump_cpu_ctx_t;
 
 typedef struct tzbsp_dump_buf_s
@@ -1023,13 +1023,13 @@ void save_last_watchdog_reg(void)
     tzbsp_dump_buf_t *last_watchdog_reg;
     struct rtc_time tm;
     int file_handle;
-
-    asus_rtc_read_time(&tm);
+    
+    asus_rtc_read_time(&tm);    
     last_watchdog_reg = (tzbsp_dump_buf_t*)PHONE_HANG_LOG_BUFFER - PRINTK_BUFFER_SLOT_SIZE / 2;//phys_to_virt((PHONE_HANG_LOG_BUFFER - PRINTK_BUFFER_SLOT_SIZE / 2));
     if(*((int*)last_watchdog_reg) != PRINTK_BUFFER_MAGIC)
     {
         sprintf(messages, "/asdf/%s_%04d%02d%02d-%02d%02d%02d.txt", "WatchdogReg", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
+    
         initKernelEnv();
         file_handle = sys_open(messages, O_CREAT|O_RDWR|O_SYNC, 0);
         if(!IS_ERR((const void *)file_handle))
@@ -1037,7 +1037,7 @@ void save_last_watchdog_reg(void)
             sys_write(file_handle, (unsigned char*)last_watchdog_reg, sizeof(tzbsp_dump_buf_t));
             sys_close(file_handle);
         }
-        deinitKernelEnv();
+        deinitKernelEnv();          
     }
     memset(last_watchdog_reg, 0, sizeof(tzbsp_dump_buf_t));
     *((int*)last_watchdog_reg) = PRINTK_BUFFER_MAGIC;
@@ -1047,7 +1047,7 @@ void get_last_shutdown_log(void)
 {
     char *last_shutdown_log;
     unsigned int *last_shutdown_log_addr;
-
+    
     last_shutdown_log = (char*)PRINTK_BUFFER;//(phys_to_virt(PRINTK_BUFFER);
     last_shutdown_log_addr = (unsigned int *)((unsigned int)last_shutdown_log + (unsigned int)PRINTK_BUFFER_SLOT_SIZE);
     printk("get_last_shutdown_log: last_shutdown_log_addr=0x%08x, value=0x%08x\n", (unsigned int)last_shutdown_log_addr, *last_shutdown_log_addr);
@@ -1061,15 +1061,17 @@ void get_last_shutdown_log(void)
 
 }
 EXPORT_SYMBOL(get_last_shutdown_log);
+
+#include <linux/reboot.h>
 int first = 0;
 int watchdog_test = 0;
 int asus_asdf_set = 0;
 static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
-
+    
     int group, value, ret;
     int file_handle;
-
+ 
 // +++ ASUS_BSP : add for user build
 #ifdef ASUS_SHIP_BUILD
 	if (count > 256)
@@ -1081,7 +1083,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
         //printk("load!! filter opening\n");
         initKernelEnv();
         file_handle = sys_open(ASUS_DBG_FILTER_PATH, O_RDONLY, 0);
-
+        
         if(!IS_ERR((const void *)file_handle))
         {
             //printk("filter opened %x\n", file_handle);
@@ -1094,7 +1096,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
         deinitKernelEnv();
         first = 1;
         return count;
-
+        
     }
     else if(strncmp(messages, "dbg", 3) == 0)
 	{
@@ -1109,13 +1111,15 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
 	else if(strncmp(messages, "panic", 5) == 0)
     {
         panic("panic test");
-    }
+    } 
 	else if(strncmp(messages, "get_asdf_log", strlen("get_asdf_log")) == 0)
 	{
 #ifdef CONFIG_MSM_RTB
 			extern int g_saving_rtb_log;
 #endif
 			unsigned int *last_shutdown_log_addr;
+
+            first = 1;
 
             last_shutdown_log_addr = (unsigned int *)((unsigned int)PRINTK_BUFFER + (unsigned int)PRINTK_BUFFER_SLOT_SIZE);
             printk("[ASDF] last_shutdown_log_addr=0x%08x, value=0x%08x\n", (unsigned int)last_shutdown_log_addr, *last_shutdown_log_addr);
@@ -1131,6 +1135,12 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
 					save_rtb_log();
 #endif
 
+                if ((*last_shutdown_log_addr) == (ulong)PRINTK_BUFFER_MAGIC) {
+                    printk("[ASDF] after saving asdf log, then reboot\n");
+                    sys_sync();
+                    kernel_restart(NULL);
+                }
+
 				(*last_shutdown_log_addr)=(unsigned int)PRINTK_BUFFER_MAGIC;
             }
 #ifdef CONFIG_MSM_RTB
@@ -1141,18 +1151,18 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
     {
 		printk("start to gi chk\n");
 		save_all_thread_info();
-
+		
 		msleep(5 * 1000);
-
+		
 		printk("start to gi delta\n");
 		delta_all_thread_info();
 		save_phone_hang_log();
         return count;
-    }
+    }	
 	return count;
 #endif
 // --- ASUS_BSP : add for user build
-
+   
     if (count > 256)
         count = 256;
     if (copy_from_user(messages, buf, count))
@@ -1163,7 +1173,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
         //printk("load!! filter opening\n");
         initKernelEnv();
         file_handle = sys_open(ASUS_DBG_FILTER_PATH, O_RDONLY, 0);
-
+        
         if(!IS_ERR((const void *)file_handle))
         {
             //printk("filter opened %x\n", file_handle);
@@ -1176,7 +1186,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
         deinitKernelEnv();
         first = 1;
         return count;
-
+        
     }
     else if(strncmp(messages, "dbg", 3) == 0)
     {
@@ -1192,9 +1202,9 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
     {
 		printk("start to gi chk\n");
 		save_all_thread_info();
-
+		
 		msleep(5 * 1000);
-
+		
 		printk("start to gi delta\n");
 		delta_all_thread_info();
 		save_phone_hang_log();
@@ -1204,7 +1214,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
     {
 		printk("start watchdog test...\r\n");
 		watchdog_test = 1;
-	}
+	}    
 	else if(strncmp(messages, "gichk", 5) == 0)
     {
         save_all_thread_info();
@@ -1221,7 +1231,7 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
     {
         print_all_thread_info();
         return count;
-    }
+    }    
 	else if(strncmp(messages, "get_lastshutdown_log", 20) == 0)
 	{
         save_phone_hang_log();
@@ -1232,6 +1242,8 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
 			extern int g_saving_rtb_log;
 #endif
 			unsigned int *last_shutdown_log_addr;
+
+            first = 1;
 
             last_shutdown_log_addr = (unsigned int *)((unsigned int)PRINTK_BUFFER + (unsigned int)PRINTK_BUFFER_SLOT_SIZE);
             printk("[ASDF] last_shutdown_log_addr=0x%08x, value=0x%08x\n", (unsigned int)last_shutdown_log_addr, *last_shutdown_log_addr);
@@ -1257,8 +1269,8 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
 	{
 		//initKernelEnv();
 		save_phone_hang_log();
-		//deinitKernelEnv();
-	}
+		//deinitKernelEnv();		
+	}	
 	else if(strncmp(messages, "gichk", 5) == 0)
     {
         save_all_thread_info();
@@ -1268,38 +1280,38 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
     {
         delta_all_thread_info();
         //printk("gidelta\n");
-        save_phone_hang_log();
+        save_phone_hang_log(); 
         return count;
     }
     else if(strncmp(messages, "gi", 2) == 0)
     {
         print_all_thread_info();
         return count;
-    }
+    }    
     else if(strncmp(messages, "printk", 6) == 0)
     {
 //        printk_lcd("TestAAA");
         die("test123", NULL, 0);
-    }
+    } 
     else if(strncmp(messages, "panic", 5) == 0)
     {
 //        printk_lcd("panic");
         panic("panic test");
-    }
+    } 
     else if(strncmp(messages, "die", 3) == 0)
     {
 //        printk_lcd("die");
         die("die test", NULL, 0);
-    }
+    }         
     else if(strncmp(messages, "modem", 5) == 0)
     {
         #include <mach/subsystem_restart.h>
 //        printk_lcd("TestAAA");
         subsystem_restart("external_modem");
-    }
-
+    } 
+ 
     else
-    {
+    {	
         sscanf(messages, "%d %02x", &group, &value);
         //printk("setting group %d mask %02x\n", group, value);
 
@@ -1315,16 +1327,16 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
             //printk("create filter successfully file_handle=%x\n", file_handle);
             ret = sys_write(file_handle, (unsigned char*)debug_mask_setting, 64);
             //printk("write done, ret=%d,\n", ret);
-
+            
             sys_close(file_handle);
         }
         else
             printk("ERROR! cannot create filter file");
-
+        
         deinitKernelEnv();
         return count;
     }
-
+	
 	return count;
 }
 
@@ -1333,13 +1345,13 @@ static ssize_t asusdebug_write(struct file *file, const char __user *buf, size_t
 ////                  Eventlog mask mechanism
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-
+                 
 //struct asus_evtlog_work_data{
-    //struct work_struct eventLog_Work;
+    //struct work_struct eventLog_Work;         
 //    void *data;
-//};
+//};                 
 
-
+          
 extern int suspend_in_progress;
 static struct workqueue_struct *ASUSEvtlog_workQueue;
 static int g_hfileEvtlog = -MAX_ERRNO;
@@ -1357,42 +1369,42 @@ static struct mutex mA;
 static void do_write_event_worker(struct work_struct *work)
 {
     char buffer[256];
-
+    
     //struct asus_evtlog_work_data* my_work_data = container_of(work, struct asus_evtlog_work_data, eventLog_Work);
-
+    
     while(first == 0 || suspend_in_progress)
     {
         printk("waiting first\n");
         msleep(1000);
-    }
-
+    }   
+    
     if(IS_ERR((const void*)g_hfileEvtlog))
     {
         long size;
-#if 0//def ASUS_SHIP_BUILD
+#if 0//def ASUS_SHIP_BUILD        
         g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH"_enable", O_RDONLY, 0);
         if(IS_ERR((const void*)g_hfileEvtlog))
             g_bEventlogEnable = 0;
         else
-#endif
+#endif            
         {
-#if 0//def ASUS_SHIP_BUILD
+#if 0//def ASUS_SHIP_BUILD                    
             sys_close(g_hfileEvtlog);
-#endif
-
+#endif            
+            
             g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH".txt", O_CREAT|O_RDWR|O_SYNC, 0444);
             sys_chown(ASUS_EVTLOG_PATH".txt", AID_SDCARD_RW, AID_SDCARD_RW);
-
+            
             size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
             if(size >= SZ_2M)
-            {
-                sys_close(g_hfileEvtlog);
+            {        
+                sys_close(g_hfileEvtlog); 
                 sys_rmdir(ASUS_EVTLOG_PATH"_old.txt");
                 sys_rename(ASUS_EVTLOG_PATH".txt", ASUS_EVTLOG_PATH"_old.txt");
                 g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH".txt", O_CREAT|O_RDWR|O_SYNC, 0444);
-            }
+            }    
             sprintf(buffer, "\n\n---------------System Boot----%s---------\n", ASUS_SW_VER);
-
+            
             sys_write(g_hfileEvtlog, buffer, strlen(buffer));
             sys_close(g_hfileEvtlog);
         }
@@ -1408,8 +1420,8 @@ static void do_write_event_worker(struct work_struct *work)
 
         size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
         if(size >= SZ_2M)
-        {
-            sys_close(g_hfileEvtlog);
+        {		 
+            sys_close(g_hfileEvtlog); 
             sys_rmdir(ASUS_EVTLOG_PATH"_old.txt");
             sys_rename(ASUS_EVTLOG_PATH".txt", ASUS_EVTLOG_PATH"_old.txt");
             g_hfileEvtlog = sys_open(ASUS_EVTLOG_PATH".txt", O_CREAT|O_RDWR|O_SYNC, 0444);
@@ -1423,11 +1435,13 @@ static void do_write_event_worker(struct work_struct *work)
             str_len = strlen(g_Asus_Eventlog[g_Asus_Eventlog_read]);
             pchar = g_Asus_Eventlog[g_Asus_Eventlog_read];
             g_Asus_Eventlog_read ++;
-            g_Asus_Eventlog_read %= ASUS_EVTLOG_MAX_ITEM;
+            g_Asus_Eventlog_read %= ASUS_EVTLOG_MAX_ITEM;   
             mutex_unlock(&mA);
             //printk("do_write_event_worker  str_len=%d, %s\n", str_len, pchar);
             if(pchar[str_len - 1] != '\n')
             {
+		if(str_len + 1 >= ASUS_EVTLOG_STR_MAXLEN)
+			str_len = ASUS_EVTLOG_STR_MAXLEN - 2;
                 pchar[str_len] = '\n';
                 pchar[str_len + 1] = '\0';
             }
@@ -1435,11 +1449,11 @@ static void do_write_event_worker(struct work_struct *work)
             {
                 printk("waiting for resume\n");
                 msleep(1000);
-            }
+            }    
             sys_write(g_hfileEvtlog, pchar, strlen(pchar));
             sys_fsync(g_hfileEvtlog);
             printk(pchar);
-
+            
             //spin_unlock(&spinlock_eventlog);
         }
         sys_close(g_hfileEvtlog);
@@ -1450,9 +1464,9 @@ static void do_write_event_worker(struct work_struct *work)
     //kfree(my_work_data);
     //printk("do_write_event_worker  freed \n");
 
-
+    
 }
-
+         
 extern struct timezone sys_tz;
 
 void ASUSEvtlog(const char *fmt, ...)
@@ -1460,19 +1474,19 @@ void ASUSEvtlog(const char *fmt, ...)
 
     va_list args;
     char* buffer;
-
+    
     if(g_bEventlogEnable == 0)
         return;
     //printk("-------------------------------g_Asus_Eventlog_write/asdf/ASUSEvtlog = %d\n", g_Asus_Eventlog_write);
     //mutex_lock(&mA);
     if (!in_interrupt() && !in_atomic() && !irqs_disabled())
         mutex_lock(&mA);//spin_lock(&spinlock_eventlog);
-
+    
     buffer = g_Asus_Eventlog[g_Asus_Eventlog_write];
     //printk("g_Asus_Eventlog_write = %d\n", g_Asus_Eventlog_write);
     g_Asus_Eventlog_write ++;
     g_Asus_Eventlog_write %= ASUS_EVTLOG_MAX_ITEM;
-
+        
     if (!in_interrupt() && !in_atomic() && !irqs_disabled())
         mutex_unlock(&mA);//spin_unlock(&spinlock_eventlog);
     //mutex_unlock(&mA);
@@ -1482,21 +1496,21 @@ void ASUSEvtlog(const char *fmt, ...)
     {
         struct rtc_time tm;
         struct timespec ts;
-
+        
         getnstimeofday(&ts);
         ts.tv_sec -= sys_tz.tz_minuteswest * 60; // to get correct timezone information
         rtc_time_to_tm(ts.tv_sec, &tm);
 	getrawmonotonic(&ts);
         sprintf(buffer, "(%ld)%04d-%02d-%02d %02d:%02d:%02d :",ts.tv_sec,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
+    
         va_start(args, fmt);
         vscnprintf(buffer + strlen(buffer), ASUS_EVTLOG_STR_MAXLEN - strlen(buffer), fmt, args);
         va_end(args);
         //printk(buffer);
         queue_work(ASUSEvtlog_workQueue, &eventLog_Work);
-
-
-
+        
+        
+        
     }
     else
         printk("ASUSEvtlog buffer cannot be allocated");
@@ -1528,7 +1542,7 @@ static ssize_t asusevtlog_write(struct file *file, const char __user *buf, size_
     memset(messages, 0, sizeof(messages));
     if (copy_from_user(messages, buf, count))
         return -EFAULT;
-    ASUSEvtlog(messages);
+    ASUSEvtlog("%s",messages);
 
     return count;
 }
@@ -1543,7 +1557,7 @@ bool isASUS_MSK_set(const char *fmt)
         {
             //printk("debug_mask_setting NOT set, p[1] is %d ,p[2] is %d\n",debug_mask_setting[p[1]],p[2]);
             return 0;
-        }
+        }	
         else
         {
             //printk("debug_mask_setting set\n");
@@ -1575,7 +1589,7 @@ static const struct file_operations proc_asusdebug_operations = {
 static void asusdebug_early_suspend(struct early_suspend *h)
 {
     entering_suspend = 1;
-
+    
 }
 
 static void asusdebug_early_resume(struct early_suspend *h)
@@ -1633,29 +1647,82 @@ static struct file_operations turnon_asusdebug_proc_ops = {
     .read = turnon_asusdebug_proc_read,
     .write = turnon_asusdebug_proc_write,
 };
+static int gKmsgconfig = 0;
+static int Kmsgconfig_proc_show(struct seq_file *m, void *v)
+{
+       seq_printf(m, "%d", gKmsgconfig);
+       return 0;
+}
 
+static int Kmsgconfig_proc_open(struct inode *inode, struct file *file)
+{
+       return single_open(file, Kmsgconfig_proc_show, NULL);
+}
 
+static ssize_t Kmsgconfig_proc_write(struct file *file, const char __user *buf,
+	size_t count, loff_t *ppos)
+{
+       char num[10];
+       memset(num, 0, sizeof(num));
+
+       /* no data be written */
+       if (!count) {
+	       return 0;
+	}
+
+       /* Input size is too large to write our buffer(num) */
+       if (count > (sizeof(num) - 1)) {
+       return -EINVAL;
+       }
+
+       if (copy_from_user(num, buf, count)) {
+       return -EFAULT;
+	}
+
+       if (strncmp(num, "0", 1) == 0) {
+       		gKmsgconfig = 0;
+       } else if (strncmp(num, "1", 1) == 0) {
+		gKmsgconfig = 1;
+	} else {
+		printk("gKmsgconfig unknown data!!\n");
+	}
+
+       return count;
+}
+
+int get_Kmsgconfig(void)
+{
+       return gKmsgconfig;
+}
+EXPORT_SYMBOL(get_Kmsgconfig);
+
+static const struct file_operations proc_kmsgconfig_operations = {
+       .open = Kmsgconfig_proc_open,
+       .read = seq_read,
+       .write = Kmsgconfig_proc_write,
+};
 static int __init proc_asusdebug_init(void)
 {
-
+	
     proc_create("asusdebug", S_IALLUGO, NULL, &proc_asusdebug_operations);
     proc_create("asusevtlog", S_IRWXUGO, NULL, &proc_asusevtlog_operations);
     proc_create("asusevtlog-switch", S_IRWXUGO, NULL, &proc_evtlogswitch_operations);
     proc_create("asusdebug-switch", S_IRWXUGO, NULL, &turnon_asusdebug_proc_ops);
+	 proc_create("kmsgconfig", S_IRUGO | S_IWUSR, NULL,&proc_kmsgconfig_operations);
     PRINTK_BUFFER = (unsigned int)ioremap(PRINTK_BUFFER, PRINTK_BUFFER_SIZE);
     mutex_init(&mA);
     fake_mutex.owner = current;
     fake_mutex.mutex_owner_asusdebug = current;
 	fake_mutex.name = " fake_mutex";
-
+	
 	strcpy(fake_completion.name," fake_completion");
-
+	
 	fake_rtmutex.owner = current;
     //spin_lock_init(&spinlock_eventlog);
     ASUSEvtlog_workQueue  = create_singlethread_workqueue("ASUSEVTLOG_WORKQUEUE");
 
     register_early_suspend(&asusdebug_early_suspend_handler);
-
+    
     return 0;
 }
 module_init(proc_asusdebug_init);

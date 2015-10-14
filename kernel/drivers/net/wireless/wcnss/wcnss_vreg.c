@@ -54,6 +54,8 @@ static int auto_detect;
 #define WCNSS_PMU_CFG_GC_BUS_MUX_SEL_TOP   BIT(5)
 #define WCNSS_PMU_CFG_IRIS_XO_CFG_STS      BIT(6) /* 1: in progress, 0: done */
 
+#define WCNSS_PMU_CFG_IRIS_RESET           BIT(7)
+#define WCNSS_PMU_CFG_IRIS_RESET_STS       BIT(8) /* 1: in progress, 0: done */
 #define WCNSS_PMU_CFG_IRIS_XO_READ         BIT(9)
 #define WCNSS_PMU_CFG_IRIS_XO_READ_STS     BIT(10)
 
@@ -237,6 +239,18 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on,
 				cpu_relax();
 
 			iris_reg = readl_relaxed(iris_read_reg);
+			pr_info("wcnss: IRIS Reg: %08x\n", iris_reg);
+			if (iris_reg == PRONTO_IRIS_REG_CHIP_ID) {
+				pr_info("wcnss: IRIS Card not Preset\n");
+				auto_detect = WCNSS_XO_INVALID;
+				/* Reset iris read bit */
+				reg &= ~WCNSS_PMU_CFG_IRIS_XO_READ;
+				/* Clear XO_MODE[b2:b1] bits.
+				   Clear implies 19.2 MHz TCXO
+				 */
+				reg &= ~(WCNSS_PMU_CFG_IRIS_XO_MODE);
+				goto xo_configure;
+			}
 			auto_detect = xo_auto_detect(iris_reg);
 
 			/* Reset iris read bit */
@@ -259,6 +273,20 @@ static int configure_iris_xo(struct device *dev, bool use_48mhz_xo, int on,
 				*iris_xo_set = WCNSS_XO_48MHZ;
 		}
 
+xo_configure:
+		writel_relaxed(reg, pmu_conf_reg);
+
+		/* Reset IRIS */
+		reg |= WCNSS_PMU_CFG_IRIS_RESET;
+		writel_relaxed(reg, pmu_conf_reg);
+
+		/* Wait for PMU_CFG.iris_reg_reset_sts */
+		while (readl_relaxed(pmu_conf_reg) &
+				WCNSS_PMU_CFG_IRIS_RESET_STS)
+			cpu_relax();
+
+		/* Reset iris reset bit */
+		reg &= ~WCNSS_PMU_CFG_IRIS_RESET;
 		writel_relaxed(reg, pmu_conf_reg);
 
 		/* Start IRIS XO configuration */
@@ -493,7 +521,9 @@ static int wcnss_core_vregs_on(struct device *dev, enum wcnss_hw_type hw_type)
 
 }
 
-int wcnss_wlan_power(struct device *dev, struct wcnss_wlan_config *cfg, enum wcnss_opcode on, int *iris_xo_set)
+int wcnss_wlan_power(struct device *dev,
+		struct wcnss_wlan_config *cfg,
+		enum wcnss_opcode on, int *iris_xo_set)
 {
 	int rc = 0;
 	enum wcnss_hw_type hw_type = wcnss_hardware_type();
@@ -539,7 +569,8 @@ int wcnss_wlan_power(struct device *dev, struct wcnss_wlan_config *cfg, enum wcn
         	}
 
 		/* Configure IRIS XO */
-		rc = configure_iris_xo(dev, cfg->use_48mhz_xo, WCNSS_WLAN_SWITCH_ON, iris_xo_set);
+		rc = configure_iris_xo(dev, cfg->use_48mhz_xo,
+				WCNSS_WLAN_SWITCH_ON, iris_xo_set);
 		if (rc) {
 			printk("[wcnss]: configure_iris_xo (WCNSS_WLAN_SWITCH_ON) fail.\n");
 
@@ -558,9 +589,10 @@ int wcnss_wlan_power(struct device *dev, struct wcnss_wlan_config *cfg, enum wcn
         	}
 
 		up(&wcnss_power_on_lock);
-	} 
-	else {
-		configure_iris_xo(dev, cfg->use_48mhz_xo, WCNSS_WLAN_SWITCH_OFF, NULL);
+
+	} else {
+		configure_iris_xo(dev, cfg->use_48mhz_xo,
+				WCNSS_WLAN_SWITCH_OFF, NULL);
 		printk("[wcnss]: configure_iris_xo (WCNSS_WLAN_SWITCH_OFF).\n");
 		//ASUS_BSP+++ "for /data/log/ASUSEvtlog"
 		ASUSEvtlog("[wcnss]: configure_iris_xo WCNSS_WLAN_SWITCH_OFF.\n");

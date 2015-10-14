@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/smd.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -400,7 +400,7 @@ static inline void notify_rpm_smd(smd_channel_t *ch)
 	}
 }
 
-// ASUS_BSP+++ "log SMD wake up packet"
+/*ASUS-BBSP log SMD wake up packet+++*/
 #define QMI_RX_SVC_INDEX 4
 #define QMI_RX_TYPE_INDEX 6
 #define QMI_RX_MSG_INDEX 9
@@ -492,7 +492,7 @@ static void log_smd_pkt_out_of_suspend(smd_channel_t *ch, void *data, int size)
 	}
 	pr_info("[SMD]type=%s ch=%s\n", smd_type_name[ch->type], ch->name);
 }
-// ASUS_BSP--- "log SMD wake up packet"
+/*ASUS-BBSP log SMD wake up packet---*/
 
 static inline void notify_modem_smsm(void)
 {
@@ -604,7 +604,7 @@ static int smsm_pm_notifier(struct notifier_block *nb,
 {
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		is_smsm_pm_suspend = true; // ASUS_BSP+ "log SMD wake up packet"
+		is_smsm_pm_suspend = true;/*ASUS-BBSP log SMD wake up packet+*/
 		smsm_change_state(SMSM_APPS_STATE, SMSM_PROC_AWAKE, 0);
 		break;
 
@@ -1197,12 +1197,19 @@ static unsigned ch_read_buffer(struct smd_channel *ch, void **ptr)
 {
 	unsigned head = ch->half_ch->get_head(ch->recv);
 	unsigned tail = ch->half_ch->get_tail(ch->recv);
-	*ptr = (void *) (ch->recv_data + tail);
+	unsigned fifo_size = ch->fifo_size;
 
+	BUG_ON(fifo_size >= SZ_1M);
+	BUG_ON(head >= fifo_size);
+	BUG_ON(tail >= fifo_size);
+	BUG_ON(OVERFLOW_ADD_UNSIGNED(uintptr_t, (uintptr_t)ch->recv_data,
+								 tail));
+
+	*ptr = (void *) (ch->recv_data + tail);
 	if (tail <= head)
 		return head - tail;
 	else
-		return ch->fifo_size - tail;
+		return fifo_size - tail;
 }
 
 static int read_intr_blocked(struct smd_channel *ch)
@@ -1302,16 +1309,23 @@ static unsigned ch_write_buffer(struct smd_channel *ch, void **ptr)
 {
 	unsigned head = ch->half_ch->get_head(ch->send);
 	unsigned tail = ch->half_ch->get_tail(ch->send);
-	*ptr = (void *) (ch->send_data + head);
+	unsigned fifo_size = ch->fifo_size;
 
+	BUG_ON(fifo_size >= SZ_1M);
+	BUG_ON(head >= fifo_size);
+	BUG_ON(tail >= fifo_size);
+	BUG_ON(OVERFLOW_ADD_UNSIGNED(uintptr_t, (uintptr_t)ch->send_data,
+								head));
+
+	*ptr = (void *) (ch->send_data + head);
 	if (head < tail) {
 		return tail - head - SMD_FIFO_FULL_RESERVE;
 	} else {
 		if (tail < SMD_FIFO_FULL_RESERVE)
-			return ch->fifo_size + tail - head
+			return fifo_size + tail - head
 					- SMD_FIFO_FULL_RESERVE;
 		else
-			return ch->fifo_size - head;
+			return fifo_size - head;
 	}
 }
 
@@ -1957,7 +1971,7 @@ static int smd_alloc_channel(struct smd_alloc_elm *alloc_elm, int table_id,
 	ch->pdev.name = ch->name;
 	ch->pdev.id = ch->type;
 
-	set_smd_qmi_ch_tab(ch->name, ch->n); // ASUS_BSP+ "log SMD wake up packet"
+	set_smd_qmi_ch_tab(ch->name, ch->n);/*ASUS-BBSP log SMD wake up packet+*/
 	SMD_INFO("smd_alloc_channel() '%s' cid=%d\n",
 		 ch->name, ch->n);
 
@@ -2316,26 +2330,26 @@ EXPORT_SYMBOL(smd_write_segment_avail);
 
 int smd_read(smd_channel_t *ch, void *data, int len)
 {
-	int size;
+	int size;/*ASUS-BBSP log SMD wake up packet+*/
 	if (!ch) {
 		pr_err("%s: Invalid channel specified\n", __func__);
 		return -ENODEV;
 	}
 	size = ch->read(ch, data, len, 0);
-	log_smd_pkt_out_of_suspend(ch, data, size); // ASUS_BSP+ "log SMD wake up packet"
+	log_smd_pkt_out_of_suspend(ch, data, size);/*ASUS-BBSP log SMD wake up packet+++*/
 	return size;
 }
 EXPORT_SYMBOL(smd_read);
 
 int smd_read_user_buffer(smd_channel_t *ch, void *data, int len)
 {
-	int size;
+	int size;/*ASUS-BBSP log SMD wake up packet+*/
 	if (!ch) {
 		pr_err("%s: Invalid channel specified\n", __func__);
 		return -ENODEV;
 	}
 	size = ch->read(ch, data, len, 1);
-	log_smd_pkt_out_of_suspend(ch, data, size); // ASUS_BSP+ "log SMD wake up packet"
+	log_smd_pkt_out_of_suspend(ch, data, size);/*ASUS-BBSP log SMD wake up packet+*/
 	return size;
 }
 EXPORT_SYMBOL(smd_read_user_buffer);
@@ -3610,13 +3624,13 @@ int __init msm_smd_init(void)
 	if (registered)
 		return 0;
 
-	smd_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smd");
+	smd_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smd", 0);
 	if (!smd_log_ctx) {
 		pr_err("%s: unable to create SMD logging context\n", __func__);
 		msm_smd_debug_mask = 0;
 	}
 
-	smsm_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smsm");
+	smsm_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smsm", 0);
 	if (!smsm_log_ctx) {
 		pr_err("%s: unable to create SMSM logging context\n", __func__);
 		msm_smd_debug_mask = 0;

@@ -118,6 +118,10 @@ static void enable_emergency_dload_mode(void)
 		__raw_writel(EMERGENCY_DLOAD_MAGIC3,
 				emergency_dload_mode_addr +
 				(2 * sizeof(unsigned int)));
+
+		/* Need disable the pmic wdt, then the emergency dload mode
+		 * will not auto reset. */
+		qpnp_pon_wd_config(0);
 		mb();
 	}
 }
@@ -262,6 +266,7 @@ static irqreturn_t resout_irq_handler(int irq, void *dev_id)
 static void msm_restart_prepare(const char *cmd)
 {
 	unsigned int *last_shutdown_log_addr;
+	bool is_asdf = false;
 
 #ifdef CONFIG_MSM_DLOAD_MODE
 
@@ -283,13 +288,18 @@ static void msm_restart_prepare(const char *cmd)
 	pm8xxx_reset_pwr_off(1);
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (get_dload_mode() || (cmd != NULL && cmd[0] != '\0'))
+	if (get_dload_mode() || (cmd != NULL && cmd[0] != '\0') || in_panic)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 	else
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);// +++ ASUS_BSP : add for force PON_POWER_OFF_WARM_RESET mode
+		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 
-	if (!in_panic)
-	{
+	if (cmd != NULL) {
+		if (!strncmp(cmd, "asdf", strlen("asdf"))) {
+			is_asdf = true;
+		}
+	}
+
+	if (!(in_panic || is_asdf)) {
 		// Normal reboot. Clean the printk buffer magic     
 		last_shutdown_log_addr = (unsigned int *)((unsigned int)PRINTK_BUFFER + (unsigned int)PRINTK_BUFFER_SLOT_SIZE);
 		*last_shutdown_log_addr = 0;
@@ -300,6 +310,8 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(0x77665500, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			__raw_writel(0x77665502, restart_reason);
+		} else if (!strcmp(cmd, "rtc")) {
+			__raw_writel(0x77665503, restart_reason);
 		} else if (!strncmp(cmd, "oem-", 4)) {
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
@@ -309,8 +321,7 @@ static void msm_restart_prepare(const char *cmd)
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
-	}else
-        __raw_writel(0x73727374, restart_reason);
+	}
 
 	flush_cache_all();
 	outer_flush_all();
@@ -402,11 +413,7 @@ static int __init msm_restart_init(void)
 	dload_mode_addr = MSM_IMEM_BASE + DLOAD_MODE_ADDR;
 	emergency_dload_mode_addr = MSM_IMEM_BASE +
 		EMERGENCY_DLOAD_MODE_ADDR;
-#ifdef ASUS_SHIP_BUILD
-	set_dload_mode(0);
-#else
 	set_dload_mode(download_mode);
-#endif
 #endif
 	msm_tmr0_base = msm_timer_get_timer0_base();
 	restart_reason = MSM_IMEM_BASE + RESTART_REASON_ADDR;

@@ -347,6 +347,15 @@ extern int pm8941_getCapacity(void);
 
 //Hank: when update gauge need to disable charge+++
 extern bool DisChg;
+
+//Clay: get battery FCC & voltage +++
+extern int get_vm_bms_fcc(void);
+extern int pm8941_get_prop_battery_voltage_now(void);
+//Clay: get battery voltage ---
+
+//Clay: get battery Temp only when report Capacity +++
+extern int report_temp;
+//Clay: get battery Temp only when report Capacity ---
 void UpGaugeSetChg(bool enabled)
 {
  	gpCharger->EnableCharging(gpCharger,enabled);
@@ -700,7 +709,7 @@ void judge_Cap100_WC_DCIN300(void)
 
 	//Eason_Chang: PF500KL WC_PD_DET reverse. default high, with wireless low+++
 	if(g_ASUS_hwID >= PF500KL_PR){
-		if( (true==balance_this->BatteryService_IsFULL)&&(gBMS_Cap>=99) )
+		if( gBMS_Cap>=95 )
 		{
 			g_ASUS_WC_CHG_DONE_set_DCIN300 = true;
 
@@ -759,6 +768,7 @@ static void judgeWirelessLow_VDD_MAX(int temp, int bmsCap)
 		{
 			g_ASUS_WC_set_low_VDDMAX = true; 
 			
+
 			if( (false==g_PastTime_set_WC_low_VDD)&&(true==g_ASUS_WC_set_low_VDDMAX)&&(1 == !gpio_get_value(GPIO_WC_PD_DET)) )
 			{
 				ASUS_Wireless_set_VDDMAX();
@@ -1346,7 +1356,7 @@ static void BatteryServiceDoBalance(struct AXC_BatteryService *_this)
 					IsSystemdraw = false;
 					printk("[BAT][Bal]mode:%d,N_Vbus N_Chg,Vbus:%d,SysD:%d\n"
 									,IsBalanceMode,get_microp_vbus(),IsSystemdraw);
-					ASUSEvtlog("[BAT][Bal]draw system[stop]\n");
+					//ASUSEvtlog("[BAT][Bal]draw system[stop]\n");
 	          
 			}else if((_this->A66_capacity*10 - _this->Pad_capacity*StartRatio <= 0)
 					&&(_this->A66_capacity <= 70 ))
@@ -1360,7 +1370,7 @@ static void BatteryServiceDoBalance(struct AXC_BatteryService *_this)
 					IsSystemdraw = true;
 					printk("[BAT][Bal]mode:%d,Y_Vbus N_Chg,Vbus:%d,SysD:%d\n"
 									,IsBalanceMode,get_microp_vbus(),IsSystemdraw);
-					ASUSEvtlog("[BAT][Bal]draw system[Start]\n");
+					//ASUSEvtlog("[BAT][Bal]draw system[Start]\n");
 			}
 			//judge if draw current to system, but does not charge battery ---
 		}
@@ -1384,7 +1394,7 @@ static void BatteryServiceDoBalance(struct AXC_BatteryService *_this)
 				
 				printk("[BAT][Bal]mode:%d,F_Vbus N_Chg,Vbus:%d\n"
 								,IsBalanceMode,get_microp_vbus());
-				ASUSEvtlog("[BAT][Bal]active charge[stop]\n");
+				//ASUSEvtlog("[BAT][Bal]active charge[stop]\n");
 				
 		}else if(_this->A66_capacity<=15)
 		{
@@ -1398,7 +1408,7 @@ static void BatteryServiceDoBalance(struct AXC_BatteryService *_this)
 				
 				printk("[BAT][Bal]mode:%d,Y_Vbus Y_Chg,Vbus:%d\n"
 								,IsBalanceMode,get_microp_vbus());
-				ASUSEvtlog("[BAT][Bal]active charge[Start]\n");
+				//ASUSEvtlog("[BAT][Bal]active charge[Start]\n");
 		}
 		//judge if charge to battery ---
 		//Eason: dynamic set Pad alarm +++
@@ -4931,7 +4941,9 @@ static void AXC_BatteryService_reportPropertyCapacity(struct AXC_BatteryService 
     int BatteryFCC;	
     int maxMah;
     int pmicTemp;
+    int pmicTemp_float;
     int WirelessChg;
+    int Battery_volt;
     //ASUS_BSP Eason read PM8941 register value+++
     u32 pm8941_0x1444_value;
     u32 pm8941_0x105B_value;
@@ -5240,9 +5252,26 @@ static void AXC_BatteryService_reportPropertyCapacity(struct AXC_BatteryService 
 		//ASUS_BSP Eason read PM8941 register value---	
 		WirelessChg = gpio_get_value(GPIO_WC_PD_DET);
  		pmicTemp = pm8941_get_prop_batt_temp();
-     		ASUSEvtlog("[BAT][Ser]report Capacity:%d,%d,%d,%d,%d,%d,%d,%d,%ld==>%d  ,BMS:%d, diffBMS:%d, Cur:%d, Temp:%d, WC:%d, 0x1444:0x%x, 0x105B:0x%x, 0x1040:0x%x, 0x1054:0x%x, 0x1049:0x%x, 0x1344:0x%x, 0x1010:0x%x, 0x1210:0x%x, 0x1044:0x%x, 0x105D:0x%x\n",
-                                    reMap_refcapacity,
-                                    lastCapacity,
+		report_temp = pmicTemp;
+		pmicTemp_float = pmicTemp % 10;
+		pmicTemp = pmicTemp / 10;
+		Battery_volt = pm8941_get_prop_battery_voltage_now();
+		if ((Battery_volt%1000) >= 500)
+			Battery_volt = Battery_volt/1000 + 1;
+		else
+			Battery_volt = Battery_volt/1000;
+		BatteryFCC = get_vm_bms_fcc();
+		BatteryFCC = BatteryFCC / 1000;
+     		ASUSEvtlog("[BAT][Ser]report Capacity ==>%d, FCC:%dmAh, BMS:%d, V:%dmV, Cur:%dmA, Temp:%d.%dC, %d,%d,%d,%d,%d,%d,%d,%d,%ld, diffBMS:%d, WC:%d, 0x1444:0x%x, 0x105B:0x%x, 0x1040:0x%x, 0x1054:0x%x, 0x1049:0x%x, 0x1344:0x%x, 0x1010:0x%x, 0x1210:0x%x, 0x1044:0x%x, 0x105D:0x%x\n",
+                                      A66_capacity,
+                                      BatteryFCC,
+                                      gBMS_Cap,
+                                      Battery_volt,
+                                      gCurr_TIgauge,
+                                      pmicTemp,
+                                      pmicTemp_float,
+						reMap_refcapacity,
+                                      lastCapacity,
                                       hasCable,
                                       EnableBATLifeRise,
                                       _this->BatteryService_IsCharging,
@@ -5250,11 +5279,7 @@ static void AXC_BatteryService_reportPropertyCapacity(struct AXC_BatteryService 
                                       IsBatLowtoFilter,
                                       maxMah,
                                       intervalSinceLastUpdate,
-                                      A66_capacity,
-                                      gBMS_Cap,
                                       gDiff_BMS,
-                                      gCurr_TIgauge,
-                                      pmicTemp,
                                       WirelessChg,
                                       pm8941_0x1444_value,
                                       pm8941_0x105B_value,
@@ -5621,6 +5646,7 @@ static void P02_reportPropertyCapacity(struct AXC_BatteryService *_this, int P02
 
         _this->P02_IsFirstAskCap = false;
         
+
     }else{
 
         lastCapacity = _this->Pad_capacity;

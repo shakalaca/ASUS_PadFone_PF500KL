@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,6 +32,7 @@
 #include <linux/power_supply.h>
 #include <linux/regulator/consumer.h>
 #include <linux/workqueue.h>
+#include <linux/mutex.h>
 #include <asm/hardware/gic.h>
 #include <asm/arch_timer.h>
 #include <mach/gpio.h>
@@ -49,14 +50,6 @@ enum {
 	MSM_MPM_SET_ENABLED,
 	MSM_MPM_SET_WAKEUP,
 	MSM_NR_IRQS_SET,
-};
-
-#define MAX_MPM_PENDING_IRQ_COUNT 16
-#define MSM_MPM_REG_PENDING_WIDTH 2
-struct mpm_pending_irq {
-	unsigned long pending;
-	unsigned int mpm_irq[MAX_MPM_PENDING_IRQ_COUNT];
-	unsigned int apps_irq[MAX_MPM_PENDING_IRQ_COUNT];
 };
 
 struct mpm_irqs_a2m {
@@ -89,9 +82,6 @@ static unsigned int msm_mpm_irqs_m2a[MSM_MPM_NR_MPM_IRQS];
 #define SCLK_HZ (32768)
 #define ARCH_TIMER_HZ (19200000)
 static struct msm_mpm_device_data msm_mpm_dev_data;
-
-struct mpm_pending_irq resume_mpm_pending_irq[MSM_MPM_REG_PENDING_WIDTH];
-int mpm_pending_cont[MSM_MPM_REG_PENDING_WIDTH] = {0};
 
 static struct clk *xo_clk;
 static bool xo_enabled;
@@ -541,23 +531,25 @@ void msm_mpm_enter_sleep(uint32_t sclk_count, bool from_idle,
 void msm_mpm_exit_sleep(bool from_idle)
 {
 	unsigned long pending;
+	uint32_t *enabled_intr;
 	int i;
 	int k;
-	static bool mpm_flag[MSM_MPM_REG_PENDING_WIDTH] = {true, true};
-	unsigned long temp;
 
 	if (!msm_mpm_is_initialized()) {
 		pr_err("%s(): MPM not initialized\n", __func__);
 		return;
 	}
 
+	enabled_intr = from_idle ? msm_mpm_enabled_irq :
+						msm_mpm_wake_irq;
+
 	for (i = 0; i < MSM_MPM_REG_WIDTH; i++) {
 		pending = msm_mpm_read(MSM_MPM_REG_STATUS, i);
-		temp = pending;
+		pending &= enabled_intr[i];
 
 		if (MSM_MPM_DEBUG_PENDING_IRQ & msm_mpm_debug_mask)
-			pr_info("%s: pending.%d: 0x%08lx", __func__,
-					i, pending);
+			pr_info("%s: enabled_intr pending.%d: 0x%08x 0x%08lx\n",
+				__func__, i, enabled_intr[i], pending);
 
 		k = find_first_bit(&pending, 32);
 		while (k < 32) {
@@ -566,20 +558,6 @@ void msm_mpm_exit_sleep(bool from_idle)
 			struct irq_desc *desc = apps_irq ?
 				irq_to_desc(apps_irq) : NULL;
 
-			if(i < MSM_MPM_REG_PENDING_WIDTH){
-				if(mpm_irq != 0 && apps_irq != 0){
-					if(mpm_flag[i]){
-						pr_info("[PM]MPM pending.%d: 0x%08lx, mpm_irq: %d, apps_irq: %d\n", i, pending, mpm_irq, apps_irq);
-						resume_mpm_pending_irq[i].pending = pending;
-						resume_mpm_pending_irq[i].mpm_irq[mpm_pending_cont[i]] = mpm_irq;
-						resume_mpm_pending_irq[i].apps_irq[mpm_pending_cont[i]] = apps_irq;				
-						mpm_pending_cont[i]++;
-					}
-				}
-				if(mpm_pending_cont[i] >= MAX_MPM_PENDING_IRQ_COUNT)
-					mpm_pending_cont[i] = MAX_MPM_PENDING_IRQ_COUNT - 1;
-			}
-			
 			if (desc && !irqd_is_level_type(&desc->irq_data)) {
 				irq_set_pending(apps_irq);
 				if (from_idle) {
@@ -591,17 +569,17 @@ void msm_mpm_exit_sleep(bool from_idle)
 
 			k = find_next_bit(&pending, 32, k + 1);
 		}
-
-		mpm_flag[i] = (temp != 0) ? false : true;
-		
 	}
 }
 static void msm_mpm_sys_low_power_modes(bool allow)
 {
+	static DEFINE_MUTEX(enable_xo_mutex);
+
+	mutex_lock(&enable_xo_mutex);
 	if (allow) {
 		if (xo_enabled) {
-			xo_enabled = false;
 			clk_disable_unprepare(xo_clk);
+			xo_enabled = false;
 		}
 	} else {
 		if (!xo_enabled) {
@@ -609,10 +587,11 @@ static void msm_mpm_sys_low_power_modes(bool allow)
 			 * than having to deal with not being able to wakeup
 			 * from a non-monitorable interrupt
 			 */
-			xo_enabled = true;
 			BUG_ON(clk_prepare_enable(xo_clk));
+			xo_enabled = true;
 		}
 	}
+	mutex_unlock(&enable_xo_mutex);
 }
 
 void msm_mpm_suspend_prepare(void)
@@ -704,7 +683,8 @@ static int __devinit msm_mpm_dev_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 	ret = devm_request_irq(&pdev->dev, dev->mpm_ipc_irq, msm_mpm_irq,
-			IRQF_TRIGGER_RISING, pdev->name, msm_mpm_irq);
+			IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, pdev->name,
+			msm_mpm_irq);
 
 	if (ret) {
 		pr_info("%s(): request_irq failed errno: %d\n", __func__, ret);

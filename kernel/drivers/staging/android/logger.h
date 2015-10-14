@@ -50,6 +50,23 @@ struct logger_entry {
 	uid_t		euid;		/* effective UID of logger */
 	char		msg[0];		/* the entry's payload */
 };
+struct logger_plugin {
+	struct list_head list;
+	void (*init) (void * /* callback data */);
+	void (*exit) (void * /* callback data */);
+	void (*write) (unsigned char * /* msg to write */,
+		       unsigned int /* length */,
+		       bool /* from user ? */,
+		       void * /* callback data */);
+	void (*write_seg) (void * /* msg segment to write */,
+			   unsigned int /* length */,
+			   bool /* from user ? */,
+			   bool /* start of msg ? */,
+			   bool /* end of msg ? */,
+			   void * /* callback data*/);
+	void (*write_seg_recover) (void * /* callback data */);
+	void *data;
+};
 
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
@@ -67,4 +84,6 @@ struct logger_entry {
 #define LOGGER_GET_VERSION		_IO(__LOGGERIO, 5) /* abi version */
 #define LOGGER_SET_VERSION		_IO(__LOGGERIO, 6) /* abi version */
 
+void logger_add_plugin(struct logger_plugin *plugin, const char *name);
+void logger_remove_plugin(struct logger_plugin *plugin, const char *name);
 #endif /* _LINUX_LOGGER_H */

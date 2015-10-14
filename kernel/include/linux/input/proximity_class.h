@@ -84,6 +84,7 @@ extern int proximity_dev_unregister(struct proximity_class_dev *prxdev);
 extern int als_lux_report_event_register(struct input_dev *dev);
 extern int set_camera_autobrightness_mode(int mode);
 extern void als_lux_report_event(int lux);
+extern void als_lux_report_flush(void);
 
 #define DEFAULT_ALS_SHIFT = 40
 #define DEFAULT_ALS_GAIN = 38

@@ -327,7 +327,9 @@ static int dp_reset_pd_function(const char *val, struct kernel_param *kp)
 		hdcp_enable=1;
 	}
 	else if (dp_pd_value==3) {
+	#ifdef CONFIG_EEPROM_NUVOTON
 		reportPadStationI2CFail("MyDP");
+	#endif
 	}	
 	else if (dp_pd_value==4) {
 		sp_tx_hardware_poweron(anx7808_client);				
@@ -713,7 +715,7 @@ static int anx7808_suspend(struct i2c_client *client, pm_message_t mesg)
 			ASUS_DEV_WARN("resume_trigger = 1 \n");
 			resume_trigger=1;
 	}
-	measure_pad_plugin_time=0;
+//	measure_pad_plugin_time=0;
 	ASUS_DEV_WARN("anx7808_suspend (not implement) ---\n");	
 	
 	return 0;
@@ -1008,16 +1010,51 @@ static void getPadSKU(void){
 bool wait_for_android_boot_complete(void);
 extern bool g_Android_Boot_Complete;
 //Mickey---
-#endif
-extern void MyDP_notify_vibrator_padInsert(void);
 extern int pad_insert;
-extern  void set_vib_enable(int value);
+#endif
+
+#ifdef CONFIG_ON_SEMI_VIBRATOR
+extern void MyDP_notify_vibrator_padInsert(void);
+#endif
+
+//ASUS BSP Bernard +++
+#include <asm/uaccess.h>
+#include <linux/fs.h>
+#define DEV_VIBRATOR "/sys/class/timed_output/vibrator/enable"
+ void mydp_set_vib_enable(int value)
+{
+    char timeout_ms[5];
+    static mm_segment_t oldfs;
+    struct file *fp = NULL;
+    loff_t pos_lsts = 0;
+
+    sprintf(timeout_ms, "%d", value);
+    oldfs = get_fs();
+    set_fs(KERNEL_DS);
+    fp = filp_open( DEV_VIBRATOR, O_RDWR|O_CREAT|O_TRUNC, 0664 );
+    if(IS_ERR_OR_NULL(fp)) {
+        printk("ASDF: fail to open vibrator.");
+        return;
+    }
+    if(fp->f_op != NULL && fp->f_op->write != NULL){
+        pos_lsts = 0;
+        fp->f_op->write(fp, timeout_ms, strlen(timeout_ms), &pos_lsts);
+    } else {
+        printk("ASDF: fail to write value.\n");
+    }
+    filp_close(fp, NULL);
+    set_fs(oldfs);
+    printk("ASDF: set vibrator enable. (%s ms)\n", timeout_ms);
+}
+//ASUS BSP Bernard ---
+
 static void slimport_cable_plug_proc(struct anx7808_data *anx7808)
 {
 	int ret = 0;
 ///	printk("+++++++++++++slimport_cable_plug_proc+++++++++++++++++++\n");
-	bool needWait=false;
 #ifdef CONFIG_ASUS_HDMI
+	bool needWait=false;
+
     //Mickey+++, wait for boot complete if we don't boot in pad
     if (!g_Pad_Bootup && !g_Android_Boot_Complete) {
         needWait=wait_for_android_boot_complete();
@@ -1058,10 +1095,14 @@ static void slimport_cable_plug_proc(struct anx7808_data *anx7808)
 				}
 				else
 				{
+#ifdef CONFIG_ASUS_HDMI
 					if(pad_insert){
+#ifdef CONFIG_ON_SEMI_VIBRATOR
 						schedule_work(&anx7808->vibratorWork);
+#endif
 						pad_insert = 0;
 					}
+#endif
 					msleep(20);					
 				}
 				
@@ -1150,13 +1191,15 @@ static void slimport_cable_plug_proc(struct anx7808_data *anx7808)
 //ANX ---: (ver:20130105) pad solution		
 		sp_tx_set_sys_state(STATE_CABLE_PLUG);
 	}else{
+#ifdef CONFIG_ON_SEMI_VIBRATOR
 		int vib_count=10;
 		if(needWait && gpio_get_value(75)){
 			while(vib_count--&& gpio_get_value(75)){
-				set_vib_enable(600);
+                mydp_set_vib_enable(600);
 				msleep(1500);
 			}
 		}
+#endif
 	}
 }
 #endif
@@ -1345,7 +1388,7 @@ static void slimport_playback_proc(void)
 		if(c1!=0x7||c!=0xd0)
 		{
 			DEV_DBG("ANX7808 TX cur_h_res = 0x%x,0x%x\n", c,c1);
-			ASUSEvtlog("[mydp]ANX7808 TX cur_h_res = 0x%x,0x%x\n", c,c1);
+		//	ASUSEvtlog("[mydp]ANX7808 TX cur_h_res = 0x%x,0x%x\n", c,c1);
 		}
 		sp_read_reg(TX_P2, SP_TX_TOTAL_LINE_STA_L, &c);
 		sp_read_reg(TX_P2, SP_TX_TOTAL_LINE_STA_H, &c1);
@@ -1353,20 +1396,20 @@ static void slimport_playback_proc(void)
 		if(c1!=0x4||c!=0xd3)
 		{
 		 	DEV_DBG("ANX7808 TX cur_v_res = 0x%x\n,0x%x\n", c,c1);
-			ASUSEvtlog("[mydp]ANX7808 TX cur_v_res = 0x%x\n,0x%x\n", c,c1);
+		//	ASUSEvtlog("[mydp]ANX7808 TX cur_v_res = 0x%x\n,0x%x\n", c,c1);
 		}
 		sp_read_reg(RX_P0, HDMI_RX_HTOTAL_LOW, &cl);
 		sp_read_reg(RX_P0, HDMI_RX_HTOTAL_HIGH, &ch);
 		if(ch!=0x7||cl!=0xd0)
 		{
 			DEV_DBG("ANX7808 RX cur_h_res = 0x%x 0x%x\n",ch,cl);
-			ASUSEvtlog("[mydp]ANX7808 RX cur_h_res = 0x%x 0x%x\n", ch,cl);
+		//	ASUSEvtlog("[mydp]ANX7808 RX cur_h_res = 0x%x 0x%x\n", ch,cl);
 		}
 		sp_read_reg(RX_P0, HDMI_RX_VTOTAL_LOW, &cl);
 		sp_read_reg(RX_P0, HDMI_RX_VTOTAL_HIGH, &ch);
 		if(ch!=0x4||cl!=0xd3){
 			DEV_DBG("ANX7808 RX cur_v_res = 0x%x 0x%x\n", ch,cl);
-			ASUSEvtlog("[mydp]ANX7808 RX cur_v_res = 0x%x 0x%x\n", ch,cl);
+		//	ASUSEvtlog("[mydp]ANX7808 RX cur_v_res = 0x%x 0x%x\n", ch,cl);
 		}
         if (!myDP_DP_Dongle)
 		{
@@ -1393,7 +1436,7 @@ static void slimport_playback_proc(void)
 			    g_hdmi_rx_vsync_change++;
 				
 			DEV_DBG("# 7730 video FIFO error , 0xcb= (%x), RX ISR6 = (%x)\n",  c1, c);
-			ASUSEvtlog("[myDP]7730 video FIFO error , 0xcb= (%x), RX ISR6 = (%x)\n", c1, c);
+		//	ASUSEvtlog("[myDP]7730 video FIFO error , 0xcb= (%x), RX ISR6 = (%x)\n", c1, c);
 		}
 		
 //		printk("========== ANX7730 reg 0x50 DUMP ============\n");
@@ -1414,7 +1457,7 @@ static void slimport_playback_proc(void)
 		if ((c1 != 0x7) || (c2 != 0xd0))
 		{
 			DEV_DBG("Fail 7730 0x50 H total = (%x, %x)", c1, c2);
-			ASUSEvtlog("[myDP]Fail 7730 0x50 H total = (%x, %x)", c1, c2);			
+		//	ASUSEvtlog("[myDP]Fail 7730 0x50 H total = (%x, %x)", c1, c2);			
 		}
 						
 //		printk("========== ANX7730 reg 0x72 DUMP ============\n");
@@ -1434,7 +1477,7 @@ static void slimport_playback_proc(void)
 		if ((c1 != 0xd0) || (c2 != 0x7))
 		{
 			DEV_DBG("Fail 7730 0x72 H total = (%x, %x)", c1, c2);	
-			ASUSEvtlog("[myDP]Fail 7730 0x72 H total = (%x, %x)", c1, c2);									
+			//ASUSEvtlog("[myDP]Fail 7730 0x72 H total = (%x, %x)", c1, c2);									
 		}
 //		
 //========================================
@@ -1752,6 +1795,7 @@ exit:
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_ON_SEMI_VIBRATOR
 static void  anx7808_vibrator_func(struct work_struct *work){
 //	struct anx7808_data *td = container_of(work, struct anx7808_data,
 //		 						vibratorWork.work);
@@ -1761,6 +1805,7 @@ static void  anx7808_vibrator_func(struct work_struct *work){
 	//}
 
 }
+#endif
 
 static void anx7808_carKitwork_func(struct work_struct *work)
 {
@@ -1829,6 +1874,44 @@ error:
 }
 //ASUS BSP Wei ---
 
+int gMyDPCTSconfig = 0;
+
+
+
+static ssize_t MyDPCTSconfig_proc_write(struct file *file, const char __user *buf,
+	size_t count, loff_t *ppos)
+{
+       char num[10];
+       memset(num, 0, sizeof(num));
+
+       /* no data be written */
+       if (!count) {
+	       return 0;
+	}
+
+       /* Input size is too large to write our buffer(num) */
+       if (count > (sizeof(num) - 1)) {
+       return -EINVAL;
+       }
+
+       if (copy_from_user(num, buf, count)) {
+       return -EFAULT;
+	}
+
+       if (strncmp(num, "0", 1) == 0) {
+       		gMyDPCTSconfig = 0;
+       } else if (strncmp(num, "1", 1) == 0) {
+		gMyDPCTSconfig = 1;
+	} else {
+		printk("gMyDPCTSconfig unknown data!!\n");
+	}
+
+       return count;
+}
+static const struct file_operations proc_gMyDPCTSconfig_operations = {
+
+       .write = MyDPCTSconfig_proc_write,
+};
 static int anx7808_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1925,8 +2008,9 @@ static int anx7808_i2c_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&anx7808->carKitwork, anx7808_carKitwork_func);
 //---  ASUS BSP Bernard
 
-
+#ifdef CONFIG_ON_SEMI_VIBRATOR
 	INIT_WORK(&anx7808->vibratorWork, anx7808_vibrator_func);
+#endif
 
 	anx7808->workqueue = create_singlethread_workqueue("anx7808_work");
 	if (anx7808->workqueue == NULL) {
@@ -1939,6 +2023,7 @@ static int anx7808_i2c_probe(struct i2c_client *client,
 	register_early_suspend( &dp7808_early_suspend_desc );
 #endif
 	create_MYDP_proc_file();
+	proc_create("MyDPCTSconfig",  S_IWUSR, NULL,&proc_gMyDPCTSconfig_operations);
 //ASUS BSP wei lai ---
 	ret = anx7808_system_init();
 	if (ret) {

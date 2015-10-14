@@ -102,7 +102,7 @@ extern void asus_dwc3_host_mode_cleanup(void);
 
 //ASUS_BSP+++ BennyCheng "support dynamic hsphy parameter_override_x setting"
 #define PARAMETER_OVERRIDE_X_DEBUG               0x0
-#define PARAMETER_OVERRIDE_X_PHONE               0xd194e4
+#define PARAMETER_OVERRIDE_X_PHONE               0xd190e4
 //ASUS_BSP--- BennyCheng "support dynamic hsphy parameter_override_x setting"
 
 //ASUS_BSP+++ "[USB][NA][Spec] add ASUS Charger support"

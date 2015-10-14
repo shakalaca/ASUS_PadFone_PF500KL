@@ -41,6 +41,7 @@ static struct apr_client client[APR_DEST_MAX][APR_CLIENT_MAX];
 
 static wait_queue_head_t dsp_wait;
 static wait_queue_head_t modem_wait;
+int is_modem_up = 0;
 /* Subsystem restart: QDSP6 data, functions */
 static struct workqueue_struct *apr_reset_workqueue;
 static void apr_reset_deregister(struct work_struct *work);
@@ -48,22 +49,6 @@ struct apr_reset_work {
 	void *handle;
 	struct work_struct work;
 };
-
-//ASUS_BSP Johnny +++ return listen_port when modem restart 
-struct port_link
-{
-        int port;
-        int read;
-        int deleting;
-        struct port_link* next;
-};
-extern struct port_link syn_firewall_port_link_head;
-extern int lp_modem_restart;
-extern struct completion listen_event;
-extern spinlock_t listen_port_lock;
-struct port_link *p=&syn_firewall_port_link_head;
-struct port_link *prev;
-//ASUS_BSP ---
 
 struct apr_svc_table {
 	char name[64];
@@ -452,7 +437,7 @@ void apr_cb_func(void *buf, int len, void *priv)
 	if (data.payload_size > 0)
 		data.payload = (char *)hdr + hdr_size;
 
-	temp_port = ((data.src_port >> 8) * 8) + (data.src_port & 0xFF);
+	temp_port = ((data.dest_port >> 8) * 8) + (data.dest_port & 0xFF);
 	pr_debug("port = %d t_port = %d\n", data.src_port, temp_port);
 	if (c_svc->port_cnt && c_svc->port_fn[temp_port])
 		c_svc->port_fn[temp_port](&data,  c_svc->port_priv[temp_port]);
@@ -662,6 +647,7 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 		if (apr_cmpxchg_modem_state(APR_SUBSYS_DOWN, APR_SUBSYS_UP) ==
 						APR_SUBSYS_DOWN)
 			wake_up(&modem_wait);
+                is_modem_up = 1;
 		pr_debug("M-Notify: Bootup Completed\n");
 		break;
 	default:
@@ -708,39 +694,6 @@ static struct notifier_block lnb = {
 };
 
 
-//ASUS_BSP Johnny +++ return listen_port when modem restart
-static int listen_port_notifier_cb(struct notifier_block *this,
-                                        unsigned long code, void *_cmd)
-{
-switch (code) {
-        case SUBSYS_BEFORE_SHUTDOWN:
-
-          spin_lock_bh(&listen_port_lock);
-          prev=p;
-          while(prev->next!=NULL)
-              {
-
-              printk("[SYN] start set read to 0\n");
-
-              prev=prev->next;
-              if(1==prev->read)
-                    prev->read=0;
-              }
-
-          printk("[SYN] lp_modem_restart=1\n");
-          lp_modem_restart=1;
-          spin_unlock_bh(&listen_port_lock);
-          complete(&listen_event);
-
-        break;
-}
-        return NOTIFY_DONE;
-}
-static struct notifier_block lp_nb = {
-        .notifier_call = listen_port_notifier_cb,
-};
-//ASUS_BSP ---
-
 static int __init apr_init(void)
 {
 	int i, j, k;
@@ -769,7 +722,6 @@ static int __init apr_late_init(void)
 	init_waitqueue_head(&dsp_wait);
 	init_waitqueue_head(&modem_wait);
 	subsys_notif_register_notifier("modem", &mnb);
-        subsys_notif_register_notifier("modem", &lp_nb);//ASUS_BSP Johnny +++ return listen_port when modem restart
 	subsys_notif_register_notifier(apr_get_lpass_subsys_name(), &lnb);
 	return ret;
 }

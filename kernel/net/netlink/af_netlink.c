@@ -238,11 +238,6 @@ static struct sock *netlink_lookup(struct net *net, int protocol, u32 pid)
 	read_lock(&nl_table_lock);
 	head = nl_pid_hashfn(hash, pid);
 	sk_for_each(sk, node, head) {
-        if((unsigned int)node < 0xc0000000)
-        {
-            printk("netlink_lookup node value is buggy %p\n", node);
-            break;
-        }
 		if (net_eq(sock_net(sk), net) && (nlk_sk(sk)->pid == pid)) {
 			sock_hold(sk);
 			goto found;
@@ -1548,11 +1543,11 @@ netlink_kernel_create(struct net *net, int unit, unsigned int groups,
 	if (input)
 		nlk_sk(sk)->netlink_rcv = input;
 
-	if (netlink_insert(sk, net, 0))
-		goto out_sock_release;
-
 	nlk = nlk_sk(sk);
 	nlk->flags |= NETLINK_KERNEL_SOCKET;
+
+	if (netlink_insert(sk, net, 0))
+		goto out_sock_release;
 
 	netlink_table_grab();
 	if (!nl_table[unit].registered) {

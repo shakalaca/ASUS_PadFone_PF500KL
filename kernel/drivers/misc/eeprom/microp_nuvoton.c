@@ -48,7 +48,7 @@ static int g_gpio_rf_sw_2=-1;
 #endif
 unsigned int g_firmwareSize = 16*1024;
 
-extern int PadFone_IN_OUT(int isin);
+extern int PadFone_IN_OUT(int isin); 
 static int is_first_bootup = 1;
 extern enum DEVICE_HWID g_ASUS_hwID;
 
@@ -215,7 +215,8 @@ int is_Mode_APROM(void){
 
 static void microp_reconnected(void);
 
-extern bool asus_padstation_exist_realtime(void); //ASUS_BSP:joe1_++
+
+extern bool asus_padstation_exist_realtime(void); //ASUS_BSP:joe1_++ 
 
 // need modification
 bool pad_exist(void){
@@ -853,7 +854,7 @@ static void initP01(struct work_struct *work){
 			g_uPadErrStatus=0;      // reset error status to 0
 			switch_set_state(&pad_err_notify, 0);
 
-                    PadFone_IN_OUT(1); //notify wlan, pad is in
+                     PadFone_IN_OUT(1); //notify wlan, pad is in
 
 		}
 		else{

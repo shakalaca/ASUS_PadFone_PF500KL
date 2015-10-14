@@ -33,10 +33,9 @@
 #include <mach/mpm.h>
 #include "gpio-msm-common.h"
 
-bool measure_phone_wakeup_time;
-bool measure_pad_wakeup_time;
-
+//[+++][Power]Add for wakeup debug
 int gpio_irq_cnt, gpio_resume_irq[8];
+//[---][Power]Add for wakeup debug
 
 #ifdef CONFIG_GPIO_MSM_V3
 enum msm_tlmm_register {
@@ -53,14 +52,6 @@ enum msm_tlmm_register {
 	SDC1_HDRV_PULL_CTL = 0x20a0,
 };
 #endif
-
-enum {
-	DEBUG_PHONE = 1U << 0,
-	DEBUG_PAD = 1U << 1
-};
-static int stress_test_mask = 0;
-module_param_named(debug_mask, stress_test_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
-
 
 static int tlmm_msm_summary_irq, nr_direct_connect_irqs;
 
@@ -125,16 +116,11 @@ struct irq_chip msm_gpio_irq_extn = {
  * @wake_irqs: a bitmap for tracking which interrupt lines are enabled
  * as wakeup sources.  When the device is suspended, interrupts which are
  * not wakeup sources are disabled.
- *
- * @dual_edge_irqs: a bitmap used to track which irqs are configured
- * as dual-edge, as this is not supported by the hardware and requires
- * some special handling in the driver.
  */
 struct msm_gpio_dev {
 	struct gpio_chip gpio_chip;
 	unsigned long *enabled_irqs;
 	unsigned long *wake_irqs;
-	unsigned long *dual_edge_irqs;
 	struct irq_domain *domain;
 };
 
@@ -232,64 +218,11 @@ static struct msm_gpio_dev msm_gpio = {
 	},
 };
 
-static void switch_mpm_config(struct irq_data *d, unsigned val)
-{
-	/* switch the configuration in the mpm as well */
-	if (!msm_gpio_irq_extn.irq_set_type)
-		return;
-
-	if (val)
-		msm_gpio_irq_extn.irq_set_type(d, IRQF_TRIGGER_FALLING);
-	else
-		msm_gpio_irq_extn.irq_set_type(d, IRQF_TRIGGER_RISING);
-}
-
-/* For dual-edge interrupts in software, since the hardware has no
- * such support:
- *
- * At appropriate moments, this function may be called to flip the polarity
- * settings of both-edge irq lines to try and catch the next edge.
- *
- * The attempt is considered successful if:
- * - the status bit goes high, indicating that an edge was caught, or
- * - the input value of the gpio doesn't change during the attempt.
- * If the value changes twice during the process, that would cause the first
- * test to fail but would force the second, as two opposite
- * transitions would cause a detection no matter the polarity setting.
- *
- * The do-loop tries to sledge-hammer closed the timing hole between
- * the initial value-read and the polarity-write - if the line value changes
- * during that window, an interrupt is lost, the new polarity setting is
- * incorrect, and the first success test will fail, causing a retry.
- *
- * Algorithm comes from Google's msmgpio driver, see mach-msm/gpio.c.
- */
-static void msm_gpio_update_dual_edge_pos(struct irq_data *d, unsigned gpio)
-{
-	int loop_limit = 100;
-	unsigned val, val2, intstat;
-
-	do {
-		val = __msm_gpio_get_inout(gpio);
-		__msm_gpio_set_polarity(gpio, val);
-		val2 = __msm_gpio_get_inout(gpio);
-		intstat = __msm_gpio_get_intr_status(gpio);
-		if (intstat || val == val2) {
-			switch_mpm_config(d, val);
-			return;
-		}
-	} while (loop_limit-- > 0);
-	pr_err("%s: dual-edge irq failed to stabilize, %#08x != %#08x\n",
-	       __func__, val, val2);
-}
-
 static void msm_gpio_irq_ack(struct irq_data *d)
 {
 	int gpio = msm_irq_to_gpio(&msm_gpio.gpio_chip, d->irq);
 
 	__msm_gpio_set_intr_status(gpio);
-	if (test_bit(gpio, msm_gpio.dual_edge_irqs))
-		msm_gpio_update_dual_edge_pos(d, gpio);
 	mb();
 }
 
@@ -340,29 +273,18 @@ static int msm_gpio_irq_set_type(struct irq_data *d, unsigned int flow_type)
 
 	spin_lock_irqsave(&tlmm_lock, irq_flags);
 
-	if (flow_type & IRQ_TYPE_EDGE_BOTH) {
+	if (flow_type & IRQ_TYPE_EDGE_BOTH)
 		__irq_set_handler_locked(d->irq, handle_edge_irq);
-		if ((flow_type & IRQ_TYPE_EDGE_BOTH) == IRQ_TYPE_EDGE_BOTH)
-			__set_bit(gpio, msm_gpio.dual_edge_irqs);
-		else
-			__clear_bit(gpio, msm_gpio.dual_edge_irqs);
-	} else {
+	else
 		__irq_set_handler_locked(d->irq, handle_level_irq);
-		__clear_bit(gpio, msm_gpio.dual_edge_irqs);
-	}
 
 	__msm_gpio_set_intr_cfg_type(gpio, flow_type);
-
-	if ((flow_type & IRQ_TYPE_EDGE_BOTH) == IRQ_TYPE_EDGE_BOTH)
-		msm_gpio_update_dual_edge_pos(d, gpio);
 
 	mb();
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);
 
-	if ((flow_type & IRQ_TYPE_EDGE_BOTH) != IRQ_TYPE_EDGE_BOTH) {
-		if (msm_gpio_irq_extn.irq_set_type)
-			msm_gpio_irq_extn.irq_set_type(d, flow_type);
-	}
+	if (msm_gpio_irq_extn.irq_set_type)
+		msm_gpio_irq_extn.irq_set_type(d, flow_type);
 
 	return 0;
 }
@@ -447,15 +369,14 @@ void msm_gpio_show_resume_irq(void)
 {
 	unsigned long irq_flags;
 	int i, j, irq, intstat;
-	int ngpio = msm_gpio.gpio_chip.ngpio;
 	int gpiopin;
-	static unsigned long stress_test_count = 0;
-	static unsigned long stress_test_count_pad = 0;
-
+	int ngpio = msm_gpio.gpio_chip.ngpio;
+	//[+++]Add GPIO wakeup information
 	for(j = 0; j < 8; j++)
 		gpio_resume_irq[j] = 0;
-
 	gpio_irq_cnt=0;
+	//[---]Add GPIO wakeup information
+
 	if (!msm_show_resume_irq_mask)
 		return;
 
@@ -465,33 +386,19 @@ void msm_gpio_show_resume_irq(void)
 		if (intstat) {
 			irq = msm_gpio_to_irq(&msm_gpio.gpio_chip, i);
 			gpiopin = msm_irq_to_gpio(&msm_gpio.gpio_chip, irq);
-			if(gpiopin == 28){
-				measure_phone_wakeup_time = true;
-			
-				stress_test_count++;
-				if(stress_test_mask & DEBUG_PHONE)
-					printk("[PM]Suspend/Resume phone power key trigger count: %ld\n", stress_test_count);
-				if(stress_test_count >= (1 << 30))
-					stress_test_count = 0;
-			}else if(gpiopin == 9){
-				measure_pad_wakeup_time = true;
-			
-				stress_test_count_pad++;
-				if(stress_test_mask & DEBUG_PAD)
-					printk("[PM]Suspend/Resume pad power key trigger count: %ld\n", stress_test_count_pad);
-				if(stress_test_count_pad >= (1 << 30))
-					stress_test_count_pad = 0;				
-			}			
 			pr_warning("[PM]GPIO: %d resume triggered\n", gpiopin);
+			//[+++]Add GPIO wakeup information
 			if(gpio_irq_cnt < 8)
 				gpio_resume_irq[gpio_irq_cnt]=gpiopin;
 			gpio_irq_cnt++;
+			//[---]Add GPIO wakeup information
 		}
 	}
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);
-	
+	//[+++]Add GPIO wakeup information
 	if(gpio_irq_cnt >= 8)
-		gpio_irq_cnt = 7;		
+		gpio_irq_cnt = 7;
+	//[---]Add GPIO wakeup information
 }
 
 static void msm_gpio_resume(void)
@@ -583,12 +490,6 @@ int msm_gpio_install_direct_irq(unsigned gpio, unsigned irq,
 }
 EXPORT_SYMBOL(msm_gpio_install_direct_irq);
 
-int get_tlmm_msm_summary_irq(void)
-{
-	return tlmm_msm_summary_irq;
-}
-EXPORT_SYMBOL(get_tlmm_msm_summary_irq);
-
 /*
  * This lock class tells lockdep that GPIO irqs are in a different
  * category than their parent, so it won't report false recursion.
@@ -658,17 +559,9 @@ static int __devinit msm_gpio_probe(struct platform_device *pdev)
 				, __func__);
 		return -ENOMEM;
 	}
-	msm_gpio.dual_edge_irqs = devm_kzalloc(&pdev->dev, sizeof(unsigned long)
-					* BITS_TO_LONGS(ngpio), GFP_KERNEL);
-	if (!msm_gpio.dual_edge_irqs) {
-		dev_err(&pdev->dev, "%s failed to allocated dual_edge_irqs bitmap\n"
-				, __func__);
-		return -ENOMEM;
-	}
 
 	bitmap_zero(msm_gpio.enabled_irqs, ngpio);
 	bitmap_zero(msm_gpio.wake_irqs, ngpio);
-	bitmap_zero(msm_gpio.dual_edge_irqs, ngpio);
 	ret = gpiochip_add(&msm_gpio.gpio_chip);
 	if (ret < 0)
 		return ret;

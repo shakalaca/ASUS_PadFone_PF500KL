@@ -256,7 +256,7 @@ static void adsp_log_failure_reason(void)
 	memcpy(buffer, reason, size);
 	buffer[size] = '\0';
 	pr_err("ADSP subsystem failure reason: %s", buffer);
-	subsys_save_reason(buffer); // ASUS_BSP+ "save SSR reason"
+	subsys_save_reason("ADSP", buffer);/*ASUS-BBSP Save SSR reason+*/
 	memset((void *)reason, 0x0, size);
 	wmb();
 }

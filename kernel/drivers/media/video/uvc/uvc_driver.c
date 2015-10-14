@@ -2579,12 +2579,13 @@ static int __init uvc_init(void)
 	uvc_debugfs_init();
 
 	printk("uvc_init\n");
+	printk("Evan uvc_init");
 	ret = usb_register(&uvc_driver.driver);
 	if (ret < 0) {
 		uvc_debugfs_cleanup();
 		return ret;
 	}
-
+	printk("Evan uvc_init done");
 	 create_USB_Cam_version_proc_file(); //ASUS_BSP +++ Jay "[A66][USB_Cam][NA][Others]add proc file for query USB Camera FW version"
 	//ASUS_BSP +++ Joy "USB camera register microp"
 	ret = register_microp_notifier(&usb_camera_microp_notifier);

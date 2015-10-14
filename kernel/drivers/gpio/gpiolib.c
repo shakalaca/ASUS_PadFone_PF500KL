@@ -1288,7 +1288,6 @@ void gpio_free(unsigned gpio)
 	struct gpio_chip	*chip;
 
 	might_sleep();
-
 	if (!gpio_is_valid(gpio)) {
 		WARN_ON(extra_checks);
 		return;

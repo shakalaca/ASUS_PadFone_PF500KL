@@ -29,15 +29,11 @@
 
 #include "power.h"
 
-#define WAIT_FOR_PRINT_WAKEUP_SOURCE	1000 * 10 // 10 secs
-extern struct timer_list check_wakeup_source_timer;
-extern unsigned long print_period;
-ktime_t wakeup_starttime;
-//[CR]
+//[+++]Debug for active wakelock before entering suspend
 #include <linux/wakelock.h>
 int pmsp_flag = 0;
-bool g_resume_status; //austin+++
-
+bool g_resume_status;
+//[---]Debug for active wakelock before entering suspend
 const char *const pm_states[PM_SUSPEND_MAX] = {
 #ifdef CONFIG_EARLYSUSPEND
 	[PM_SUSPEND_ON]		= "on",
@@ -148,7 +144,6 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
 static int suspend_enter(suspend_state_t state, bool *wakeup)
 {
 	int error;
-	static unsigned long suspend_resume_count = 0;
 
 	if (suspend_ops->prepare) {
 		error = suspend_ops->prepare();
@@ -177,13 +172,6 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
-
-//+++ASUS BSP Vincent
-	suspend_resume_count++;
-	pr_debug("[PM]Suspend/Resume count: %ld\n", suspend_resume_count);
-	if(suspend_resume_count >= (1 << 30))
-		suspend_resume_count = 0;
-//---ASUS BSP Vincent
 
 	error = syscore_suspend();
 	if (!error) {
@@ -214,7 +202,7 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	return error;
 }
 
-//Add a timer to trigger wakelock debug
+//[+++]Debug for active wakelock before entering suspend
 extern void print_active_locks(void);
 void unattended_timer_expired(unsigned long data);
 DEFINE_TIMER(unattended_timer, unattended_timer_expired, 0, 0);
@@ -227,7 +215,7 @@ void unattended_timer_expired(unsigned long data)
     print_active_locks();
 	mod_timer(&unattended_timer, jiffies + msecs_to_jiffies(PM_UNATTENDED_TIMEOUT));
 }
-
+//[---]Debug for active wakelock before entering suspend
 /**
  * suspend_devices_and_enter - Suspend devices and enter system sleep state.
  * @state: System sleep state to enter.
@@ -246,21 +234,10 @@ int suspend_devices_and_enter(suspend_state_t state)
 		if (error)
 			goto Close;
 	}
-
-	// ASUS BSP+++ Vincent
-	//
-	// if the suspending successes, delete pending timer
-	//
-	if (timer_pending(&check_wakeup_source_timer)){
-		del_timer(&check_wakeup_source_timer);
-		print_period = WAIT_FOR_PRINT_WAKEUP_SOURCE;
-		printk("[PM]Delete pending check_wakeup_source_timer\n");
-	}	
-	
-	//Add a timer to trigger wakelock debug
+	//[+++]Debug for active wakelock before entering suspend
     pr_info("[PM]unattended_timer: del_timer\n");
     del_timer ( &unattended_timer );
-	
+	//[---]Debug for active wakelock before entering suspend
 	suspend_console();
 	suspend_test_start();
 	error = dpm_suspend_start(PMSG_SUSPEND);
@@ -279,19 +256,14 @@ int suspend_devices_and_enter(suspend_state_t state)
 
  Resume_devices:
 	suspend_test_start();
-	//ASUS BSP++ Vincent
-	wakeup_starttime = ktime_get();
-	//ASUS BSP-- Vincent
 	dpm_resume_end(PMSG_RESUME);
 	suspend_test_finish("resume devices");
 	resume_console();
-
-	//Add a timer to trigger wakelock debug
+	//[+++]Debug for active wakelock before entering suspend
     pr_info("[PM]unattended_timer: mod_timer\n");
     mod_timer(&unattended_timer, jiffies + msecs_to_jiffies(PM_UNATTENDED_TIMEOUT));
-    g_resume_status = true; //austin+++
-
-
+    g_resume_status = true;
+	//[---]Debug for active wakelock before entering suspend
  Close:
 	if (suspend_ops->end)
 		suspend_ops->end();

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -161,10 +161,7 @@
 			vcc_i2c-supply = <&pm8941_lvs1>;
 			novatek,reset-gpio = <&msmgpio 60 0x00>;
 			novatek,irq-gpio = <&msmgpio 12 0x00>;
-			novatek,panel-coords = <0  0 760 1424>;
-			novatek,display-coords = <0 0 720 1280>;
-			novatek,i2c-pull-up;
-			novatek,no-force-update;
+			novatek,panel-coords = <0  0 1080 1920>;
 		};
 	};
 // --- ASUS_BSP : add for ASUS touch 
@@ -233,7 +230,7 @@
 			debounce-interval = <15>;
 		};
 	};
-/*
+
 	spi@f9923000 {
 		ethernet-switch@2 {
 			compatible = "micrel,ks8851";
@@ -246,12 +243,13 @@
 			vdd-phy-supply = <&spi_eth_vreg>;
 		};
 	};
-*/
+
 	sound {
 		qcom,model = "msm8974-taiko-cdp-snd-card";
 		qcom,hdmi-audio-rx;
 		qcom,us-euro-gpios = <&pm8941_gpios 20 0>;
 		qcom,cdc-micbias2-headset-only;
+		qcom,mbhc-audio-jack-type = "6-pole-jack";
 	};
 
 	usb2_otg_sw: regulator-tpd4s214 {
@@ -795,3 +793,34 @@
        status = "disable"; // Add for ASUS Display driver
        qcom,cont-splash-enabled;
 };
+
+&dsi_generic_720p_cmd {
+       qcom,cont-splash-enabled;
+};
+
+&dsi_jdi_1080_vid {
+       qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_1 {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_1 {
+	qcom,cont-splash-enabled;
+};
+

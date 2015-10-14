@@ -1995,8 +1995,9 @@ uint sp_tx_link_err_check(void)
 
 	DEV_ERR(" Err of Lane = %d, swing = %d\n", errl, g_swing_value);
     if (errl > 5){
-		ASUSEvtlog(" Err of Lane = %d, swing = %d\n", errl, g_swing_value);
+	//	ASUSEvtlog(" Err of Lane = %d, swing = %d\n", errl, g_swing_value);
     }	
+
 	return errl;
 }
 
@@ -2017,7 +2018,7 @@ uint sp_tx_link_err_check_1(void)
 
        if (errl){
 		DEV_ERR(" ## Err of Lane = %d\n", errl);
-		ASUSEvtlog(" ## Err of Lane = %d\n", errl);
+		//ASUSEvtlog(" ## Err of Lane = %d\n", errl);
        }
 	   
 	return errl;
@@ -2972,7 +2973,7 @@ static void sp_tx_irq_isr(void)
 					if(g_MyDP_HDCP_FAIL_COUNT>5){
 						g_MyDP_HDCP_FAIL_COUNT=0;
 						DEV_ERR("%s:MyDP_HDCP_SYNC_LOST ++++\n",__func__);
-						ASUSEvtlog("%s:MyDP_HDCP_SYNC_LOST ++++\n",__func__);
+						//ASUSEvtlog("%s:MyDP_HDCP_SYNC_LOST ++++\n",__func__);
 						hdcp_enable=0;
 					}
 				}
@@ -3296,7 +3297,7 @@ void sp_tx_hdcp_process(void)
 		sp_tx_power_down(SP_TX_PWR_HDCP);
 		sp_tx_video_mute(0);
 		sp_tx_set_sys_state(STATE_PLAY_BACK);
-		ASUSEvtlog("[MyDP] MyDP run TV mode in Pad \n");
+		//ASUSEvtlog("[MyDP] MyDP run TV mode in Pad \n");
 		return;
 	}
 //ANX +++: (ver0.4)
@@ -3603,13 +3604,15 @@ extern int g_isMyDP_poweron; //ASUS BSP wei +++
 #include <linux/microp_api.h>
 #include <linux/microp_pin_def.h>
 #endif
-extern int g_pad_speaker_retry;
+//extern int g_pad_speaker_retry;
 //ASUS BSP wei ---
 void sp_tx_set_sys_state(enum SP_TX_System_State ss)
 {
+#ifdef CONFIG_ASUS_HDMI
 	ktime_t rettime;
 	u64 usecs64;
 	int usecs;
+#endif
 	DEV_NOTICE("SP_TX To System State: ");
 
 	switch (ss) {
@@ -3648,11 +3651,15 @@ void sp_tx_set_sys_state(enum SP_TX_System_State ss)
 	case STATE_PLAY_BACK:
 		sp_tx_system_state = STATE_PLAY_BACK;
 		DEV_NOTICE("STATE_PLAY_BACK");
+	#if 0
 		if(g_pad_speaker_retry) {
 			DEV_NOTICE("Enable pad_speaker\n");
 			AX_MicroP_setGPIOOutputPin(OUT_uP_SPK_EN, 1);
 			g_pad_speaker_retry = 0;
 		}
+	#endif
+	
+#ifdef CONFIG_ASUS_RESUME_TIME_CALCULATION
 //ASUS BSP++ Vincent
 		if(measure_pad_wakeup_time){
 			rettime = ktime_get();
@@ -3666,6 +3673,7 @@ void sp_tx_set_sys_state(enum SP_TX_System_State ss)
 			}
 		}
 //ASUS BSP-- Vincent	
+#endif
 
 //ASUS BSP Wei +++
 #ifdef CONFIG_ASUS_HDMI
@@ -4811,7 +4819,10 @@ error:
 //ANX +++: (ver0.4)			
 
 extern int g_Pad_LT_Fail_Count;
+extern int gMyDPCTSconfig;
+#ifdef CONFIG_EEPROM_NUVOTON
 extern void reportPadStationI2CFail(char *devname);
+#endif
 unchar sp_tx_config_hdmi_pad(void)
 {
 
@@ -4967,9 +4978,14 @@ unchar sp_tx_config_hdmi_pad(void)
 						//ASUS BSP wei +++
 						if(g_Pad_LT_Fail_Count>=5){
 							g_Pad_LT_Fail_Count=0;
-							reportPadStationI2CFail("MyDP");
 							DEV_NOTICE("____________Hardware LT Fail in Pad mode \n");
-							return 1;	
+							if(gMyDPCTSconfig !=1){
+#ifdef CONFIG_EEPROM_NUVOTON
+							 reportPadStationI2CFail("MyDP");
+#endif
+							 return 1;	
+							}
+							
 						}
 						//ASUS BSP wei ---
 						sp_write_reg(TX_P0, 0xA3, (g_swing_value)  | (g_pre_emphis_value << 3) );	

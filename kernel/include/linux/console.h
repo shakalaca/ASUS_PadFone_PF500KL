@@ -110,6 +110,7 @@ int con_debug_leave(void);
 #define CON_BOOT	(8)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
+#define CON_IGNORELEVEL	(64) /* Used to ignore log level for a console */
 
 struct console {
 	char	name[16];
@@ -180,18 +181,8 @@ void vcs_remove_sysfs(int index);
 #ifdef CONFIG_VGA_CONSOLE
 extern bool vgacon_text_force(void);
 #endif
-
-
-#define MAX_MPM_PENDING_IRQ_COUNT 16
-#define MSM_MPM_REG_PENDING_WIDTH 2
-struct mpm_pending_irq {
-	unsigned long pending;
-	unsigned int mpm_irq[MAX_MPM_PENDING_IRQ_COUNT];
-	unsigned int apps_irq[MAX_MPM_PENDING_IRQ_COUNT];
-};
-
-extern int pm_new_state, gpio_irq_cnt, gpio_resume_irq[8], gic_irq_cnt, gic_resume_irq[8];
-extern struct mpm_pending_irq resume_mpm_pending_irq[MSM_MPM_REG_PENDING_WIDTH];
-extern int mpm_pending_cont[MSM_MPM_REG_PENDING_WIDTH];
-extern unsigned int pwrcs_time, pm_pwrcs_ret;
+//[+++][Power]Add for wakeup debug
+extern int gpio_irq_cnt, gpio_resume_irq[8], gic_irq_cnt, gic_resume_irq[8];
+extern unsigned int pm_pwrcs_ret;
+//[---][Power]Add for wakeup debug
 #endif /* _LINUX_CONSOLE_H */

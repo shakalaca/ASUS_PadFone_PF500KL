@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,11 +29,10 @@
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
 //ASUS_BSP: Louis +++
-#ifdef CONFIG_ASUS_HDMI
-extern int g_padfone_state;
-#endif
 extern struct mdss_panel_data *g_mdss_pdata;
 extern int g_mdss_dsi_block;
+extern int g_padfone_state;
+
 #ifdef CONFIG_A86_BACKLIGHT
 extern void asus_set_bl_brightness(struct mdss_dsi_ctrl_pdata *, int );
 #endif
@@ -42,11 +41,10 @@ extern void qpnp_wled_ctrl(bool enable);
 #ifdef CONFIG_P05_NOVATEK_CM
 extern void nvt71890_cabc_set(bool bOn);
 #endif
-
-int A91_lcd_id = 0; // 0:sharp; 1:innolux
-
 void sharp_set_cabc(int mode);
+
 int g_displayOn = false;
+int A91_lcd_id = 0; // 0:sharp; 1:innolux
 static struct mutex cmd_mutex;
 static bool CABC_MOVING = true;
 static char a86_bl_val[3] = {0x51, 0x01, 0x00};
@@ -81,6 +79,7 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 {
 	int ret;
 	u32 duty;
+	u32 period_ns;
 
 	if (ctrl->pwm_bl == NULL) {
 		pr_err("%s: no PWM\n", __func__);
@@ -109,10 +108,23 @@ static void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 		ctrl->pwm_enabled = 0;
 	}
 
-	ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
-	if (ret) {
-		pr_err("%s: pwm_config_us() failed err=%d.\n", __func__, ret);
-		return;
+	if (ctrl->pwm_period >= USEC_PER_SEC) {
+		ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
+		if (ret) {
+			pr_err("%s: pwm_config_us() failed err=%d.\n",
+					__func__, ret);
+			return;
+		}
+	} else {
+		period_ns = ctrl->pwm_period * NSEC_PER_USEC;
+		ret = pwm_config(ctrl->pwm_bl,
+				level * period_ns / ctrl->bklt_max,
+				period_ns);
+		if (ret) {
+			pr_err("%s: pwm_config() failed err=%d.\n",
+					__func__, ret);
+			return;
+		}
 	}
 
 	ret = pwm_enable(ctrl->pwm_bl);
@@ -158,6 +170,11 @@ static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 	cmdreq.cmds = pcmds->cmds;
 	cmdreq.cmds_cnt = pcmds->cmd_cnt;
 	cmdreq.flags = CMD_REQ_COMMIT;
+
+	/*Panel ON/Off commands should be sent in DSI Low Power Mode*/
+	if (pcmds->link_state == DSI_LP_MODE)
+		cmdreq.flags  |= CMD_REQ_LP_MODE;
+
 	cmdreq.rlen = 0;
 	cmdreq.cb = NULL;
 
@@ -192,21 +209,60 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 #endif
 //ASUS_BSP: Louis --
 
-void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
+static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
+{
+	int rc = 0;
+
+	if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
+		rc = gpio_request(ctrl_pdata->disp_en_gpio,
+						"disp_enable");
+		if (rc) {
+			pr_err("request disp_en gpio failed, rc=%d\n",
+				       rc);
+			goto disp_en_gpio_err;
+		}
+	}
+	rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
+	if (rc) {
+		pr_err("request reset gpio failed, rc=%d\n",
+			rc);
+		goto rst_gpio_err;
+	}
+
+	//if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
+	if(0)  {
+		rc = gpio_request(ctrl_pdata->mode_gpio, "panel_mode");
+		if (rc) {
+			pr_err("request panel mode gpio failed,rc=%d\n",
+								rc);
+			goto mode_gpio_err;
+		}
+	}
+
+	return rc;
+
+mode_gpio_err:
+	gpio_free(ctrl_pdata->rst_gpio);
+rst_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+		gpio_free(ctrl_pdata->disp_en_gpio);
+disp_en_gpio_err:
+	return rc;
+}
+
+int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_panel_info *pinfo = NULL;
-	int i;
+	int i, rc = 0;
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
-		return;
+		return -EINVAL;
 	}
-
     //ASUS_BSP: Louis +++
-    if (pdata->panel_info.panel_sleep_mode) {
-        return;
-    }
+    if (pdata->panel_info.panel_sleep_mode)
+        return rc;
     //ASUS_BSP: Louis ---
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
@@ -220,21 +276,28 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
-		return;
+		return rc;
 	}
 
 	pr_debug("%s: enable = %d\n", __func__, enable);
 	pinfo = &(ctrl_pdata->panel_data.panel_info);
 
 	if (enable) {
-		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
-			gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+		rc = mdss_dsi_request_gpios(ctrl_pdata);
+		if (rc) {
+			pr_err("gpio request failed\n");
+			return rc;
+		}
+		if (!pinfo->panel_power_on) {
+			if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+				gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
 
-		for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
-			gpio_set_value((ctrl_pdata->rst_gpio),
-				pdata->panel_info.rst_seq[i]);
-			if (pdata->panel_info.rst_seq[++i])
-				usleep(pdata->panel_info.rst_seq[i] * 1000);
+			for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
+				gpio_set_value((ctrl_pdata->rst_gpio),
+					pdata->panel_info.rst_seq[i]);
+				if (pdata->panel_info.rst_seq[++i])
+					usleep(pinfo->rst_seq[i] * 1000);
+			}
 		}
 
 		if (gpio_is_valid(ctrl_pdata->mode_gpio)) {
@@ -250,10 +313,16 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
 	} else {
-		gpio_set_value((ctrl_pdata->rst_gpio), 0);
-		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+		if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+			gpio_free(ctrl_pdata->disp_en_gpio);
+		}
+		gpio_set_value((ctrl_pdata->rst_gpio), 0);
+		gpio_free(ctrl_pdata->rst_gpio);
+		if (gpio_is_valid(ctrl_pdata->mode_gpio))
+			gpio_free(ctrl_pdata->mode_gpio);
 	}
+	return rc;
 }
 
 static char caset[] = {0x2a, 0x00, 0x00, 0x03, 0x00};	/* DTYPE_DCS_LWRITE */
@@ -311,6 +380,36 @@ static int mdss_dsi_panel_partial_update(struct mdss_panel_data *pdata)
 	return rc;
 }
 
+static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
+							int mode)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
+	struct mipi_panel_info *mipi;
+	struct dsi_panel_cmds *pcmds;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return;
+	}
+
+	mipi  = &pdata->panel_info.mipi;
+
+	if (!mipi->dynamic_switch_enabled)
+		return;
+
+	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
+				panel_data);
+
+	if (mode == DSI_CMD_MODE)
+		pcmds = &ctrl_pdata->video2cmd;
+	else
+		pcmds = &ctrl_pdata->cmd2video;
+
+	mdss_dsi_panel_cmds_send(ctrl_pdata, pcmds);
+
+	return;
+}
+
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 							u32 bl_level)
 {
@@ -346,6 +445,21 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 #ifdef CONFIG_A86_BACKLIGHT
         asus_set_bl_brightness(ctrl_pdata, bl_level);
 #endif
+		//ASUS_BSP: Louis ---
+		if (mdss_dsi_is_master_ctrl(ctrl_pdata)) {
+			struct mdss_dsi_ctrl_pdata *sctrl =
+				mdss_dsi_get_slave_ctrl();
+			if (!sctrl) {
+				pr_err("%s: Invalid slave ctrl data\n",
+					__func__);
+				return;
+			}
+		//ASUS_BSP: Louis +++
+			//mdss_dsi_panel_bklt_dcs(sctrl, bl_level);
+#ifdef CONFIG_A86_BACKLIGHT
+        	asus_set_bl_brightness(ctrl_pdata, bl_level);
+#endif
+		}
         //ASUS_BSP: Louis ---
 		break;
 	default:
@@ -371,8 +485,7 @@ int asus_set_brightness(struct mdss_dsi_ctrl_pdata *ctrl, int value)
 		if (value > 7*4) {
 	    	memcpy(a86_bl_init_val,a86_bl_val,sizeof(a86_bl_val));
 		}
-    }
-    else{
+    } else {
     	a90_bl_val[1] = value;
 
 		if (value > 7) {
@@ -384,8 +497,7 @@ int asus_set_brightness(struct mdss_dsi_ctrl_pdata *ctrl, int value)
         if (value <= 150 && CABC_MOVING == true) {   //turn off cabc once duty < 15 %
             sharp_set_cabc(0);
             CABC_MOVING = false;
-        }
-        else if (value > 150 && CABC_MOVING == false) {
+        } else if (value > 150 && CABC_MOVING == false) {
             sharp_set_cabc(3);
             CABC_MOVING = true;
         }
@@ -394,7 +506,6 @@ int asus_set_brightness(struct mdss_dsi_ctrl_pdata *ctrl, int value)
     mutex_lock(&cmd_mutex);
 
     if (!g_mdss_dsi_block && g_mdss_pdata->panel_info.panel_power_on) {
-
         memset(&cmdreq, 0, sizeof(cmdreq));
         cmdreq.cmds_cnt = 1;
         cmdreq.flags = CMD_REQ_COMMIT | CMD_CLK_CTRL;
@@ -404,21 +515,23 @@ int asus_set_brightness(struct mdss_dsi_ctrl_pdata *ctrl, int value)
         if (g_ASUS_hwID == A90_EVB || A91_lcd_id == INNOLUX_DISP) {
             cmdreq.cmds = &nvt_brightness_set;
             printk("[BL] Set nvt brightness (%d)\n", a90_bl_val[1]);
-        }
-        else {
+        } else {
             cmdreq.cmds = &renesas_brightness_set;
             printk("[BL] Set renesas brightness (%d)\n", (a86_bl_val[1]*256 + a86_bl_val[2]));
         }
 
-        mdss_set_tx_power_mode(0, g_mdss_pdata);
+        mdss_dsi_set_tx_power_mode(0, g_mdss_pdata);
 
         asus_mdss_mdp_clk_ctl(1);
         mdss_dsi_cmdlist_put(ctrl, &cmdreq);
         asus_mdss_mdp_clk_ctl(0);
 
-        mdss_set_tx_power_mode(1, g_mdss_pdata);
-    }
-    else {
+        mdss_dsi_set_tx_power_mode(1, g_mdss_pdata);
+
+		//ASUS BSP Bernard, unuse in recovery mode
+        /*if (g_Recovery)
+            qpnp_wled_ctrl(1);*/
+    } else {
         printk("[Display] Set bk fail due to dsi_block(%d), panel_power(%d)\n", g_mdss_dsi_block, g_mdss_pdata->panel_info.panel_power_on);
     }
 
@@ -430,6 +543,7 @@ int asus_set_brightness(struct mdss_dsi_ctrl_pdata *ctrl, int value)
 
 extern int himax_ts_suspend(void);
 extern int himax_ts_resume(void);
+
 static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 {
 	struct mipi_panel_info *mipi;
@@ -455,42 +569,38 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
         indx = 2;   // add for video dtsi VBP / VFP
 
     if (A91_lcd_id) {
-        if (!g_Recovery && !g_Charger_mode)
              ctrl->on_cmds.cmds[523+indx].payload[1] = a90_bl_init_val[1];
-        else
-            ctrl->on_cmds.cmds[523+indx].payload[1] = 0x0;
+        
         printk("[BL] bk %x : %d \n", ctrl->on_cmds.cmds[523+indx].payload[0],
                                          ctrl->on_cmds.cmds[523+indx].payload[1]);
 
         if (!CABC_MOVING)
             ctrl->on_cmds.cmds[525+indx].payload[1] = 0x0;
-    }
-    else {
-        if (!g_Recovery && !g_Charger_mode) {
+    } else {
 	         memcpy(ctrl->on_cmds.cmds[4].payload,a86_bl_init_val,sizeof(a86_bl_init_val));
-        }
-        else {
-            ctrl->on_cmds.cmds[4].payload[1] = 0x0;
-            ctrl->on_cmds.cmds[4].payload[2] = 0x0;
-        }
+
         printk("[BL] bk %x : %d \n", ctrl->on_cmds.cmds[4].payload[0],
                                          ctrl->on_cmds.cmds[4].payload[1]*256 +
                                                 ctrl->on_cmds.cmds[4].payload[2]);
     }
+//     mdss_dsi_set_tx_power_mode(0, pdata);
 
 	himax_ts_resume();
 
 	if (ctrl->on_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->on_cmds);
 
-    g_displayOn = true;
+//     mdss_dsi_set_tx_power_mode(1, pdata);
 
-    //ASUS_BSP: Louis, enable wled after overlay or pan display case ++
+	g_displayOn = true;
+	
+	//ASUS BSP Bernard, unuse in recovery mode
+    /*//ASUS_BSP: Louis, enable wled after overlay or pan display case ++
     if ((g_ASUS_hwID == A90_EVB || g_ASUS_hwID >= A91_SR1) && g_padfone_state != 2) {
-        if (g_Recovery || g_Charger_mode)
+        if (g_Recovery)
             qpnp_wled_ctrl(1);
     }
-    //ASUS_BSP: Louis --
+    //ASUS_BSP: Louis --*/
 
     mutex_unlock(&cmd_mutex);
     printk("[Display] A91 display on --\n");
@@ -524,18 +634,20 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
     if (g_ASUS_hwID == A90_EVB || g_ASUS_hwID >= A91_SR1) {
         qpnp_wled_ctrl(0);
     }
+	
+//     mdss_dsi_set_tx_power_mode(0, pdata);
 
 	himax_ts_suspend();
 
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds);
 
-    g_displayOn = false;
+//     mdss_dsi_set_tx_power_mode(1, pdata);
 
     mutex_unlock(&cmd_mutex);
     printk("[Display] A91 display off --\n");
     //--- ASUS_BSP: Louis
-    
+
 	pr_debug("%s:-\n", __func__);
 	return 0;
 }
@@ -587,8 +699,7 @@ void sharp_set_cabc(int mode)
         asus_mdss_mdp_clk_ctl(1);
         mdss_dsi_cmdlist_put(ctrl_pdata, &cmdreq);
         asus_mdss_mdp_clk_ctl(0);
-    }
-    else {
+    } else {
         printk("CABC Set Fail: mode=%d\n", mode);
     }
 
@@ -640,8 +751,7 @@ static ssize_t cabc_proc_write(struct file *filp, const char *buff, size_t len, 
             sharp_set_cabc(2);
         else if(strncmp(messages, "3", 1) == 0) //moving
             sharp_set_cabc(3);
-    }
-    else {
+    } else {
         if(strncmp(messages, "0", 1) == 0) {
 #ifdef CONFIG_P05_NOVATEK_CM
             nvt71890_cabc_set(0);
@@ -940,11 +1050,16 @@ static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 		len -= dchdr->dlen;
 	}
 
-	data = of_get_property(np, link_key, NULL);
-	if (data && !strcmp(data, "dsi_hs_mode"))
-		pcmds->link_state = DSI_HS_MODE;
-	else
-		pcmds->link_state = DSI_LP_MODE;
+	/*Set default link state to LP Mode*/
+	pcmds->link_state = DSI_LP_MODE;
+
+	if (link_key) {
+		data = of_get_property(np, link_key, NULL);
+		if (data && !strcmp(data, "dsi_hs_mode"))
+			pcmds->link_state = DSI_HS_MODE;
+		else
+			pcmds->link_state = DSI_LP_MODE;
+	}
 
 	pr_debug("%s: dcs_cmd=%x len=%d, cmd_cnt=%d link_state=%d\n", __func__,
 		pcmds->buf[0], pcmds->blen, pcmds->cmd_cnt, pcmds->link_state);
@@ -957,7 +1072,7 @@ exit_free:
 }
 
 
-static int mdss_panel_dt_get_dst_fmt(u32 bpp, char mipi_mode, u32 pixel_packing,
+int mdss_panel_get_dst_fmt(u32 bpp, char mipi_mode, u32 pixel_packing,
 				char *dst_format)
 {
 	int rc = 0;
@@ -1080,6 +1195,41 @@ static int mdss_dsi_parse_fbc_params(struct device_node *np,
 	return 0;
 }
 
+static void mdss_panel_parse_te_params(struct device_node *np,
+				       struct mdss_panel_info *panel_info)
+{
+
+	u32 tmp;
+	int rc = 0;
+	/*
+	 * TE default: dsi byte clock calculated base on 70 fps;
+	 * around 14 ms to complete a kickoff cycle if te disabled;
+	 * vclk_line base on 60 fps; write is faster than read;
+	 * init == start == rdptr;
+	 */
+	panel_info->te.tear_check_en =
+		!of_property_read_bool(np, "qcom,mdss-tear-check-disable");
+	rc = of_property_read_u32
+		(np, "qcom,mdss-tear-check-sync-cfg-height", &tmp);
+	panel_info->te.sync_cfg_height = (!rc ? tmp : 0xfff0);
+	rc = of_property_read_u32
+		(np, "qcom,mdss-tear-check-sync-init-val", &tmp);
+	panel_info->te.vsync_init_val = (!rc ? tmp : panel_info->yres);
+	rc = of_property_read_u32
+		(np, "qcom,mdss-tear-check-sync-threshold-start", &tmp);
+	panel_info->te.sync_threshold_start = (!rc ? tmp : 4);
+	rc = of_property_read_u32
+		(np, "qcom,mdss-tear-check-sync-threshold-continue", &tmp);
+	panel_info->te.sync_threshold_continue = (!rc ? tmp : 4);
+	rc = of_property_read_u32(np, "qcom,mdss-tear-check-start-pos", &tmp);
+	panel_info->te.start_pos = (!rc ? tmp : panel_info->yres);
+	rc = of_property_read_u32
+		(np, "qcom,mdss-tear-check-rd-ptr-trigger-intr", &tmp);
+	panel_info->te.rd_ptr_irq = (!rc ? tmp : panel_info->yres + 1);
+	rc = of_property_read_u32(np, "qcom,mdss-tear-check-frame-rate", &tmp);
+	panel_info->te.refx100 = (!rc ? tmp : 6000);
+}
+
 
 static int mdss_dsi_parse_reset_seq(struct device_node *np,
 		u32 rst_seq[MDSS_DSI_RST_SEQ_LEN], u32 *rst_len,
@@ -1109,6 +1259,89 @@ static int mdss_dsi_parse_reset_seq(struct device_node *np,
 	return 0;
 }
 
+static void mdss_dsi_parse_roi_alignment(struct device_node *np,
+		struct mdss_panel_info *pinfo)
+{
+	int len = 0;
+	u32 value[6];
+	struct property *data;
+	data = of_find_property(np, "qcom,panel-roi-alignment", &len);
+	len /= sizeof(u32);
+	if (!data || (len != 6)) {
+		pr_debug("%s: Panel roi alignment not found", __func__);
+	} else {
+		int rc = of_property_read_u32_array(np,
+				"qcom,panel-roi-alignment", value, len);
+		if (rc)
+			pr_debug("%s: Error reading panel roi alignment values",
+					__func__);
+		else {
+			pinfo->xstart_pix_align = value[0];
+			pinfo->width_pix_align = value[1];
+			pinfo->ystart_pix_align = value[2];
+			pinfo->height_pix_align = value[3];
+			pinfo->min_width = value[4];
+			pinfo->min_height = value[5];
+		}
+
+		pr_debug("%s: ROI alignment: [%d, %d, %d, %d, %d, %d]",
+				__func__, pinfo->xstart_pix_align,
+				pinfo->width_pix_align, pinfo->ystart_pix_align,
+				pinfo->height_pix_align, pinfo->min_width,
+				pinfo->min_height);
+	}
+}
+
+static int mdss_dsi_parse_panel_features(struct device_node *np,
+	struct mdss_dsi_ctrl_pdata *ctrl)
+{
+	struct mdss_panel_info *pinfo;
+
+	if (!np || !ctrl) {
+		pr_err("%s: Invalid arguments\n", __func__);
+		return -ENODEV;
+	}
+
+	pinfo = &ctrl->panel_data.panel_info;
+
+	pinfo->cont_splash_enabled = of_property_read_bool(np,
+		"qcom,cont-splash-enabled");
+
+	pinfo->partial_update_enabled = of_property_read_bool(np,
+		"qcom,partial-update-enabled");
+	pr_info("%s:%d Partial update %s\n", __func__, __LINE__,
+		(pinfo->partial_update_enabled ? "enabled" : "disabled"));
+	if (pinfo->partial_update_enabled)
+		ctrl->partial_update_fnc = mdss_dsi_panel_partial_update;
+
+	pinfo->ulps_feature_enabled = of_property_read_bool(np,
+		"qcom,ulps-enabled");
+	pr_info("%s: ulps feature %s", __func__,
+		(pinfo->ulps_feature_enabled ? "enabled" : "disabled"));
+	pinfo->esd_check_enabled = of_property_read_bool(np,
+		"qcom,esd-check-enabled");
+
+	pinfo->mipi.dynamic_switch_enabled = of_property_read_bool(np,
+		"qcom,dynamic-mode-switch-enabled");
+
+	if (pinfo->mipi.dynamic_switch_enabled) {
+		mdss_dsi_parse_dcs_cmds(np, &ctrl->video2cmd,
+			"qcom,video-to-cmd-mode-switch-commands", NULL);
+
+		mdss_dsi_parse_dcs_cmds(np, &ctrl->cmd2video,
+			"qcom,cmd-to-video-mode-switch-commands", NULL);
+
+		if (!ctrl->video2cmd.cmd_cnt || !ctrl->cmd2video.cmd_cnt) {
+			pr_warn("No commands specified for dynamic switch\n");
+			pinfo->mipi.dynamic_switch_enabled = 0;
+		}
+	}
+
+	pr_info("%s: dynamic switch feature enabled: %d", __func__,
+		pinfo->mipi.dynamic_switch_enabled);
+
+	return 0;
+}
 
 static int mdss_panel_parse_dt(struct device_node *np,
 			struct mdss_dsi_ctrl_pdata *ctrl_pdata)
@@ -1164,9 +1397,11 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	tmp = 0;
 	data = of_get_property(np, "qcom,mdss-dsi-pixel-packing", NULL);
 	if (data && !strcmp(data, "loose"))
-		tmp = 1;
-	rc = mdss_panel_dt_get_dst_fmt(pinfo->bpp,
-		pinfo->mipi.mode, tmp,
+		pinfo->mipi.pixel_packing = 1;
+	else
+		pinfo->mipi.pixel_packing = 0;
+	rc = mdss_panel_get_dst_fmt(pinfo->bpp,
+		pinfo->mipi.mode, pinfo->mipi.pixel_packing,
 		&(pinfo->mipi.dst_format));
 	if (rc) {
 		pr_debug("%s: problem determining dst format. Set Default\n",
@@ -1187,13 +1422,14 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		else if (!strcmp(pdest, "display_2"))
 			pinfo->pdest = DISPLAY_2;
 		else {
-			pr_debug("%s: pdest not specified. Set Default\n",
-								__func__);
+			pr_debug("%s: incorrect pdest. Set Default\n",
+				__func__);
 			pinfo->pdest = DISPLAY_1;
 		}
 	} else {
-		pr_err("%s: pdest not specified\n", __func__);
-		return -EINVAL;
+		pr_debug("%s: pdest not specified. Set Default\n",
+				__func__);
+		pinfo->pdest = DISPLAY_1;
 	}
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-h-front-porch", &tmp);
 	pinfo->lcdc.h_front_porch = (!rc ? tmp : 6);
@@ -1275,6 +1511,8 @@ static int mdss_panel_parse_dt(struct device_node *np,
 		"qcom,mdss-dsi-hsa-power-mode");
 	pinfo->mipi.hbp_power_stop = of_property_read_bool(np,
 		"qcom,mdss-dsi-hbp-power-mode");
+	pinfo->mipi.last_line_interleave_en = of_property_read_bool(np,
+		"qcom,mdss-dsi-last-line-interleave");
 	pinfo->mipi.bllp_power_stop = of_property_read_bool(np,
 		"qcom,mdss-dsi-bllp-power-mode");
 	pinfo->mipi.eof_bllp_power_stop = of_property_read_bool(
@@ -1292,11 +1530,11 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	pinfo->mipi.insert_dcs_cmd =
 			(!rc ? tmp : 1);
 	rc = of_property_read_u32(np,
-		"qcom,mdss-dsi-te-v-sync-continue-lines", &tmp);
+		"qcom,mdss-dsi-wr-mem-continue", &tmp);
 	pinfo->mipi.wr_mem_continue =
 			(!rc ? tmp : 0x3c);
 	rc = of_property_read_u32(np,
-		"qcom,mdss-dsi-te-v-sync-rd-ptr-irq-line", &tmp);
+		"qcom,mdss-dsi-wr-mem-start", &tmp);
 	pinfo->mipi.wr_mem_start =
 			(!rc ? tmp : 0x2c);
 	rc = of_property_read_u32(np,
@@ -1306,7 +1544,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-virtual-channel-id", &tmp);
 	pinfo->mipi.vc = (!rc ? tmp : 0);
 	pinfo->mipi.rgb_swap = DSI_RGB_SWAP_RGB;
-	data = of_get_property(np, "mdss-dsi-color-order", NULL);
+	data = of_get_property(np, "qcom,mdss-dsi-color-order", NULL);
 	if (data) {
 		if (!strcmp(data, "rgb_swap_rbg"))
 			pinfo->mipi.rgb_swap = DSI_RGB_SWAP_RBG;
@@ -1332,6 +1570,11 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	pinfo->mipi.t_clk_pre = (!rc ? tmp : 0x24);
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-t-clk-post", &tmp);
 	pinfo->mipi.t_clk_post = (!rc ? tmp : 0x03);
+
+	pinfo->mipi.rx_eot_ignore = of_property_read_bool(np,
+		"qcom,mdss-dsi-rx-eot-ignore");
+	pinfo->mipi.tx_eot_append = of_property_read_bool(np,
+		"qcom,mdss-dsi-tx-eot-append");
 
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-stream", &tmp);
 	pinfo->mipi.stream = (!rc ? tmp : 0);
@@ -1365,6 +1608,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	pinfo->mipi.init_delay = (!rc ? tmp : 0);
 
 	mdss_dsi_parse_fbc_params(np, pinfo);
+	mdss_dsi_parse_roi_alignment(np, pinfo);
 
 	mdss_dsi_parse_trigger(np, &(pinfo->mipi.mdp_trigger),
 		"qcom,mdss-dsi-mdp-trigger");
@@ -1376,6 +1620,7 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	mdss_dsi_parse_reset_seq(np, pinfo->rst_seq, &(pinfo->rst_seq_len),
 		"qcom,mdss-dsi-reset-sequence");
+	mdss_panel_parse_te_params(np, pinfo);
 
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->on_cmds,
 		"qcom,mdss-dsi-on-command", "qcom,mdss-dsi-on-command-state");
@@ -1383,7 +1628,30 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
 		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
 
-    //ASUS_BSP: Louis +++
+	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->status_cmds,
+			"qcom,mdss-dsi-panel-status-command",
+				"qcom,mdss-dsi-panel-status-command-state");
+	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-status-value", &tmp);
+	ctrl_pdata->status_value = (!rc ? tmp : 0);
+
+
+	ctrl_pdata->status_mode = ESD_MAX;
+	rc = of_property_read_string(np,
+				"qcom,mdss-dsi-panel-status-check-mode", &data);
+	if (!rc) {
+		if (!strcmp(data, "bta_check"))
+			ctrl_pdata->status_mode = ESD_BTA;
+		else if (!strcmp(data, "reg_read"))
+			ctrl_pdata->status_mode = ESD_REG;
+	}
+
+	rc = mdss_dsi_parse_panel_features(np, ctrl_pdata);
+	if (rc) {
+		pr_err("%s: failed to parse panel features\n", __func__);
+		goto error;
+	}
+	
+	//ASUS_BSP: Louis +++
     pinfo->panel_sleep_mode = of_property_read_bool(np,
                     "asus,panel-sleep-mode");
     //ASUS_BSP: Louis ---
@@ -1400,13 +1668,14 @@ int mdss_dsi_panel_init(struct device_node *node,
 {
 	int rc = 0;
 	static const char *panel_name;
-	bool cont_splash_enabled;
-	bool partial_update_enabled;
+	struct mdss_panel_info *pinfo;
 
-	if (!node) {
-		pr_err("%s: no panel node\n", __func__);
+	if (!node || !ctrl_pdata) {
+		pr_err("%s: Invalid arguments\n", __func__);
 		return -ENODEV;
 	}
+
+	pinfo = &ctrl_pdata->panel_data.panel_info;
 
 	pr_debug("%s:%d\n", __func__, __LINE__);
 	panel_name = of_get_property(node, "qcom,mdss-dsi-panel-name", NULL);
@@ -1422,52 +1691,44 @@ int mdss_dsi_panel_init(struct device_node *node,
 		return rc;
 	}
 
-	if (cmd_cfg_cont_splash)
-		cont_splash_enabled = of_property_read_bool(node,
-				"qcom,cont-splash-enabled");
-	else
-		cont_splash_enabled = false;
-	if (!cont_splash_enabled) {
+	if (!cmd_cfg_cont_splash)
+		pinfo->cont_splash_enabled = false;
+	pr_info("%s: Continuous splash %s", __func__,
+		pinfo->cont_splash_enabled ? "enabled" : "disabled");
+
+	//ASUS_BSP: Louis +++
+	if (!cmd_cfg_cont_splash) {
 		pr_info("%s:%d Continuous splash flag not found.\n",
 				__func__, __LINE__);
 		ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 0;
-        ctrl_pdata->panel_data.panel_info.disable_pad_splash = false;   //ASUS_BSP: Louis +++
+		ctrl_pdata->panel_data.panel_info.disable_pad_splash = false;
 	} else {
 		pr_info("%s:%d Continuous splash flag enabled.\n",
 				__func__, __LINE__);
-
 		ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 1;
-        if (gpio_get_value_cansleep(75)) {
-            pr_info(" %s: bootup in pad, disable Continuous splash\n", __func__);
-            ctrl_pdata->panel_data.panel_info.disable_pad_splash = true;
-            ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 0;
+		if (gpio_get_value_cansleep(75)) {
+			pr_info(" %s: bootup in pad, disable Continuous splash\n", __func__);
+			ctrl_pdata->panel_data.panel_info.disable_pad_splash = true;
+		ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 0;
+		} else {
+			if (g_panel_connect == false) {
+				pr_info(" %s: bootup in phone but panel is not connected , disable Continuous splash\n", __func__);
+				ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 0;
+			} else {
+				pr_info(" %s: bootup in phone, enable Continuous splash\n", __func__);
+				ctrl_pdata->panel_data.panel_info.disable_pad_splash = false;
+			}
         }
-        else {
-            if (g_panel_connect == false){
-            pr_info(" %s: bootup in phone but panel is not connected , disable Continuous splash\n", __func__);
-            ctrl_pdata->panel_data.panel_info.cont_splash_enabled = 0;}
-            else{
-            pr_info(" %s: bootup in phone, enable Continuous splash\n", __func__);
-            ctrl_pdata->panel_data.panel_info.disable_pad_splash = false;}
-        }
-        //ASUS_BSP: Louis ---
 	}
+	//ASUS_BSP: Louis ---
 
-	partial_update_enabled = of_property_read_bool(node,
-						"qcom,partial-update-enabled");
-	if (partial_update_enabled) {
-		pr_info("%s:%d Partial update enabled.\n", __func__, __LINE__);
-		ctrl_pdata->panel_data.panel_info.partial_update_enabled = 1;
-		ctrl_pdata->partial_update_fnc = mdss_dsi_panel_partial_update;
-	} else {
-		pr_info("%s:%d Partial update disabled.\n", __func__, __LINE__);
-		ctrl_pdata->panel_data.panel_info.partial_update_enabled = 0;
-		ctrl_pdata->partial_update_fnc = NULL;
-	}
+	pinfo->dynamic_switch_pending = false;
+	pinfo->is_lpm_mode = false;
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
 	ctrl_pdata->off = mdss_dsi_panel_off;
 	ctrl_pdata->panel_data.set_backlight = mdss_dsi_panel_bl_ctrl;
+	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
 
 	//ASUS_BSP: Louis ++
 	mutex_init(&cmd_mutex);

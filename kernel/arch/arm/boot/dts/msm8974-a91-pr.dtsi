@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 
 / {
 	aliases {
+		spi9 = &spi_9; //ASUS BSP Evan
 		serial0 = &blsp1_uart1;
 	};
 };
@@ -101,27 +102,13 @@
 		};
 		//--- ASUS_BSP Eason ---
 
-		// ASUS_BSP +++ Peter_Lu "Pad Lightsensor"
-		al3010@1c {
-			compatible = "dyna,al3010";
-			reg = <0x1c>;
+		// ASUS_BSP +++ Louis, "Pad TCON control driver"
+		nvt71890_i2c@60 {
+			compatible = "nvt,nt71890_cm";
+			reg = <0x60>;
 		};
-		// ASUS_BSP ---
+		// ASUS_BSP --- Louis, "Pad TCON control driver"
 
-		// ASUS_BSP +++ ShawnHuang CAP1106
-		cap1106_i2c@28 {
-			compatible = "cap,cap1106";
-			reg = <0x28>;
-		};
-		// ASUS_BSP --- ShawnHuang CAP1106
-		
-		//ASUS BSP Wei +++ STDP2600
-		stpd2600@74{
-			compatible = "stpd,stpd2600";
-			reg = <0x74>;
-		};
-		//ASUS BSP Wei --- STDP2600
-		
 		// ASUS_BSP +++ SiS9257 Touch
 		sis_i2c_ts@5C {
 			compatible = "sis,sis_i2c_ts";
@@ -132,16 +119,15 @@
 		};
 		// ASUS_BSP --- SiS9257 Touch
 
-		// ASUS_BSP +++ Louis, "Pad TCON control driver"
-		nvt71890_i2c@60 {
-			compatible = "nvt,nt71890_cm";
-			reg = <0x60>;
+		// ASUS_BSP +++ Peter_Lu "Pad Lightsensor"
+		al3010@1c {
+			compatible = "dyna,al3010";
+			reg = <0x1c>;
 		};
-		// ASUS_BSP --- Louis, "Pad TCON control driver"
+		// ASUS_BSP ---
 	};
 //--- ASUS BSP......."BLSP6 : Pad bus"
 
-//+++ ASUS BSP......."BLSP10 : NFC, Driving IC"
 	i2c@f9966000 {
 //ASUS BSP freddy+++ Porting Driving IC for Vibraotr		
 		on_semi_i2c@49 {
@@ -166,48 +152,8 @@
 			nxp,download-gpio = <&pm8941_gpios 24 0x00>;
 		};
 		//---Porting NFC's kernel---
-	};
-//--- ASUS BSP
 
-/*
-//+++ ASUS BSP......."BLSP12 : Sensors"
-	i2c@f9968000 {
-		// ASUS_BSP +++ Peter_Lu "cm36283 Lightsensor"
-		cm36283@60 {
-			compatible = "capella,cm36283";
-			reg = <0x60>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <74 0x2>;
-			vdd_ana-supply = <&pm8941_l18>;
-			vcc_i2c-supply = <&pm8941_lvs1>;
-			cm36283,irq-gpio = <&msmgpio 74 0x00>;			
-		};
-		// ASUS_BSP ---
-		// ASUS_BSP +++ Jiunhau Wang "[A86][Sensor][NA][Spec] Porting 9-axis sensor"
-		akm09911@0C {
-			compatible = "akm,akm09911";
-			reg = <0x0C>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <76 0x2>;
-			vdd_ana-supply = <&pm8941_l18>;
-			vcc_i2c-supply = <&pm8941_lvs1>;
-			akm09911,irq-gpio = <&msmgpio 76 0x00>;
-			akm09911,ready-gpio = <&msmgpio 81 0x00>;
-		};
-		mpu6500@68 {
-			compatible = "invensense,mpu6500";
-			reg = <0x68>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <66 0x2>;
-			vdd_ana-supply = <&pm8941_l18>;
-			vcc_i2c-supply = <&pm8941_lvs1>;
-			mpu6500,irq-gpio = <&msmgpio 66 0x00>;
-			mpu6500,fsync-gpio = <&pm8941_gpios 01 0x01>;
-		};
-		// ASUS_BSP --- Jiunhau Wang "[A86][Sensor][NA][Spec] Porting 9-axis sensor"
 	};
-//--- ASUS BSP
-*/
 //---.....................................................I2C bus part....................................................---//
 
 	gen-vkeys {
@@ -233,7 +179,7 @@
 			linux,input-type = <1>;
 			linux,code = <115>;
 			//gpio-key,wakeup;
-			debounce-interval = <15>;
+			debounce-interval = <1>;
 		};
 
 		vol_down {
@@ -244,7 +190,7 @@
 			linux,input-type = <1>;
 			linux,code = <114>;
 			//gpio-key,wakeup;
-			debounce-interval = <15>;
+			debounce-interval = <1>;
 		};
 
 	        pwr_key {
@@ -255,7 +201,7 @@
 	            linux,input-type = <1>;
 	            linux,code = <116>;
 	            gpio-key,wakeup;
-	            debounce-interval = <15>;
+	            debounce-interval = <1>;
 	        };
 	};
 
@@ -276,13 +222,50 @@
 		status = "okay";
 	};
 	//ASUS BSP Jacob kung +++
-
-
+//ASUS BSP LiJen +++
+	spi_9: spi@f9965000 { /* BLSP2 QUP2 */
+		compatible = "qcom,spi-qup-v2";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg-names = "spi_physical", "spi_bam_physical";
+		reg = <0xf9965000 0x1000>,
+		      <0xf9944000 0x19000>;
+		interrupt-names = "spi_irq", "spi_bam_irq";
+		interrupts = <0 103 0>, <0 239 0>;
+//		reg-names = "spi_physical";
+//		reg = <0xf9965000 0x1000>;
+//		interrupt-names = "spi_irq";
+//		interrupts = <0 103 0>;
+		spi-max-frequency = <50000000>;
+		qcom,gpio-mosi = <&msmgpio 49 0>;
+		qcom,gpio-miso = <&msmgpio 50 0>;
+		qcom,gpio-clk  = <&msmgpio 52 0>;
+		qcom,gpio-cs0  = <&msmgpio 51 0>;
+		spi_cpol;
+		spi_cpha;
+		qcom,infinite-mode = <0>;
+		qcom,use-bam;
+		qcom,ver-reg-exists;
+		qcom,bam-consumer-pipe-index = <16>;
+		qcom,bam-producer-pipe-index = <17>;
+		qcom,master-id = <84>;
+		qcom-spi-test@0{
+			compatible = "qcom,spi-test";
+			reg = <0>;
+			spi-max-frequency = <50000000>;
+			qcom,use-bam;
+			qcom,bam-consumer-pipe-index = <16>;
+			qcom,bam-producer-pipe-index = <17>;
+			//interrupt-parent = <&msmgpio>;
+ 		};
+	};
+//ASUS BSP LiJen ---
 	sound {
 		qcom,model = "msm8974-taiko-cdp-snd-card";
 		qcom,hdmi-audio-rx;
 		qcom,us-euro-gpios = <&pm8941_gpios 20 0>;
 		qcom,cdc-micbias2-headset-only;
+		qcom,mbhc-audio-jack-type = "6-pole-jack";
 	};
 
 	usb2_otg_sw: regulator-tpd4s214 {
@@ -862,8 +845,49 @@
        qcom,cont-splash-enabled;
 };
 
-&dsi_nt35595_1080_cmd {
-    status = "ok";
+&dsi_tosh_720_vid {
+       status = "disable"; // Add for ASUS Display driver
        qcom,cont-splash-enabled;
 };
+
+&dsi_nt35595_1080_cmd {
+	status = "ok";
+	qcom,cont-splash-enabled;
+};
+
+&dsi_nt35595_1080_video {
+	status = "ok";
+	qcom,cont-splash-enabled;
+};
 //ASUS_BSP: Louis, for A91 display ---
+
+&dsi_generic_720p_cmd {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_jdi_1080_vid {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_1 {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_1 {
+	qcom,cont-splash-enabled;
+};
+

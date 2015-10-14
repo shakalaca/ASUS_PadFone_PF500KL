@@ -104,6 +104,17 @@ static int dwc3_otg_set_suspend(struct usb_phy *phy, int suspend)
 	return 0;
 }
 
+static void dwc3_otg_set_hsphy_auto_suspend(struct dwc3_otg *dotg, bool susp);
+static int dwc3_otg_set_autosuspend(struct usb_phy *phy, int enable_autosuspend)
+{
+	struct usb_otg *otg = phy->otg;
+	struct dwc3_otg *dotg = container_of(otg, struct dwc3_otg, otg);
+
+	dwc3_otg_set_hsphy_auto_suspend(dotg, enable_autosuspend);
+
+	return 0;
+}
+
 static void dwc3_otg_set_hsphy_auto_suspend(struct dwc3_otg *dotg, bool susp)
 {
 	struct dwc3 *dwc = dotg->dwc;
@@ -224,6 +235,18 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 	if (on) {
 		dev_dbg(otg->phy->dev, "%s: turn on host\n", __func__);
 
+		dwc3_otg_notify_host_mode(otg, on);
+		//ASUS_BSP+++ BennyCheng "add host/client mode switch support"
+		/*
+		ret = regulator_enable(dotg->vbus_otg);
+		if (ret) {
+			dev_err(otg->phy->dev, "unable to enable vbus_otg\n");
+			dwc3_otg_notify_host_mode(otg, 0);
+			return ret;
+		}
+		*/
+		//ASUS_BSP--- BennyCheng "add host/client mode switch support"
+
 		/*
 		 * This should be revisited for more testing post-silicon.
 		 * In worst case we may need to disconnect the root hub
@@ -249,20 +272,11 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 			dev_err(otg->phy->dev,
 				"%s: failed to add XHCI pdev ret=%d\n",
 				__func__, ret);
+			regulator_disable(dotg->vbus_otg);
+			dwc3_otg_notify_host_mode(otg, 0);
 			return ret;
 		}
 
-		dwc3_otg_notify_host_mode(otg, on);
-		//ASUS_BSP+++ BennyCheng "add host/client mode switch support"
-		/*
-		ret = regulator_enable(dotg->vbus_otg);
-		if (ret) {
-			dev_err(otg->phy->dev, "unable to enable vbus_otg\n");
-			platform_device_del(dwc->xhci);
-			return ret;
-		}
-		*/
-		//ASUS_BSP--- BennyCheng "add host/client mode switch support"
 
 		/* re-init OTG EVTEN register as XHCI reset clears it */
 		if (ext_xceiv && !ext_xceiv->otg_capability)
@@ -608,7 +622,7 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
 	else
-		power_supply_type = POWER_SUPPLY_TYPE_BATTERY;
+		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
 
 	power_supply_set_supply_type(dotg->psy, power_supply_type);
 
@@ -818,7 +832,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 #ifdef CONFIG_CHARGER_ASUS
 		asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
 #endif
-		printk("[USB] OTG set_chg_mode: Carkit\n");
+		printk("[usb_dwc3] OTG set_chg_mode: Carkit\n");
 	}
 #endif
 //ASUS_BSP--- BennyCheng "add phone mode usb OTG support"
@@ -881,7 +895,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 //ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
 #ifdef CONFIG_ASUS_CARKIT
 					if (asus_state_otg == ASUS_OTG_CONNECT) {
-						printk("[USB] ASUS_OTG_CARKIT\n");
+						printk("[usb_dwc3] ASUS_OTG_CARKIT\n");
 						asus_state_otg = ASUS_OTG_CARKIT;
 						asus_state_carkit = ASUS_CARKIT_ONLINE;
 						asus_dwc3_vbus_out_enable(false, 0);
@@ -890,7 +904,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 #ifdef CONFIG_CHARGER_ASUS
 							asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
 #endif
-							printk("[USB] OTG set_chg_mode: Carkit\n");
+							printk("[usb_dwc3] OTG set_chg_mode: Carkit\n");
 						}
 					}
 #endif
@@ -899,7 +913,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 //ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
 #ifdef CONFIG_ASUS_CARKIT
 					if(asus_state_otg == ASUS_OTG_CONNECT){
-						printk("[USB] ASUS_OTG_HOST (PROPRIETARY)\n");
+						printk("[usb_dwc3] ASUS_OTG_HOST (PROPRIETARY)\n");
 						asus_state_otg = ASUS_OTG_HOST;
 						asus_dwc3_mode_switch(DWC3_USB_HOST);
 					}
@@ -918,7 +932,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 //ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
 #ifdef CONFIG_ASUS_CARKIT
 					if (asus_state_otg == ASUS_OTG_CONNECT) {
-						printk("[USB] ASUS_OTG_HOST (CDP)\n");
+						printk("[usb_dwc3] ASUS_OTG_HOST (CDP)\n");
 						asus_state_otg = ASUS_OTG_HOST;
 						asus_dwc3_mode_switch(DWC3_USB_HOST);
 					} else {
@@ -943,7 +957,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 //ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
 #ifdef CONFIG_ASUS_CARKIT
 					if (asus_state_otg == ASUS_OTG_CONNECT) {
-						printk("[USB] ASUS_OTG_HOST (SDP)\n");
+						printk("[usb_dwc3] ASUS_OTG_HOST (SDP)\n");
 						asus_state_otg = ASUS_OTG_HOST;
 						asus_dwc3_mode_switch(DWC3_USB_HOST);
 					} else {
@@ -1208,6 +1222,7 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	dotg->otg.phy->dev = dwc->dev;
 	dotg->otg.phy->set_power = dwc3_otg_set_power;
 	dotg->otg.phy->set_suspend = dwc3_otg_set_suspend;
+	dotg->otg.phy->set_phy_autosuspend = dwc3_otg_set_autosuspend;
 
 	ret = usb_set_transceiver(dotg->otg.phy);
 	if (ret) {

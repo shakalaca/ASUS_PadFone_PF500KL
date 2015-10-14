@@ -25,6 +25,8 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/time.h>
+#include <linux/vmalloc.h>
+#include <linux/aio.h>
 #include "logger.h"
 
 #include <asm/ioctls.h>
@@ -53,8 +55,11 @@ struct logger_log {
 	size_t			w_off;	/* current write head offset */
 	size_t			head;	/* new readers start here */
 	size_t			size;	/* size of the log */
+	struct list_head	logs;
+	struct list_head        plugins;
 };
 
+static LIST_HEAD(log_list);
 /*
  * struct logger_reader - a logging device open for reading
  *
@@ -461,15 +466,13 @@ ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	struct timespec now;
 	ssize_t ret = 0;
 
-    //struct timespec now; 
-    getnstimeofday(&now);
-
+	//struct timespec now; 
+	getnstimeofday(&now);
 	if (asusdebug_enable==0x11223344)
 		return 0;
 
 	//now = current_kernel_time();
-
-	//printk("thomas test now.tv_nsec = %lu,ts.tv_nsec = %lu\r\n",now.tv_nsec,ts.tv_nsec);
+	//printk("thomas test now.tv_nsec = %lu,ts.tv_nsec = %lu\r\n",now.tv_nsec,ts.tv_nsec);	
 
 	header.pid = current->tgid;
 	header.tid = current->pid;
@@ -523,6 +526,17 @@ ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 }
 
 static struct logger_log *get_log_from_minor(int);
+
+static struct logger_log *get_log_from_name(const char *name)
+{
+	struct logger_log *log;
+
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, name, strlen(name)) == 0)
+			return log;
+
+	return NULL;
+}
 
 /*
  * logger_open - the log's open() file operation
@@ -745,10 +759,10 @@ static struct logger_log VAR = { \
 	.size = SIZE, \
 };
 
-DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024)
-DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024)
-DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024)
-DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024)
+DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*2)
+DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024*2)
+DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024*2)
+DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024*2)
 
 static struct logger_log *get_log_from_minor(int minor)
 {
@@ -814,3 +828,5 @@ out:
 	return ret;
 }
 device_initcall(logger_init);
+
+#include "logger_kernel.c"

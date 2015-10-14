@@ -33,6 +33,7 @@
 #include "../base.h"
 #include "power.h"
 
+unsigned int pm_pwrcs_ret=0;//[Power]Add for wakeup debug
 typedef int (*pm_callback_t)(struct device *);
 
 /*
@@ -357,8 +358,10 @@ static void pm_dev_err(struct device *dev, pm_message_t state, char *info,
 {
 	printk(KERN_ERR "PM: Device %s failed to %s%s: error %d\n",
 		dev_name(dev), pm_verb(state.event), info, error);
+	//[+++]Add log for suspend failed debug
     ASUSEvtlog("PM: Device %s failed to %s%s: error %d\n",
-        dev_name(dev), pm_verb(state.event), info, error); //austin+++
+        dev_name(dev), pm_verb(state.event), info, error);
+	//[---]Add log for suspend failed debug
 }
 
 static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
@@ -1067,8 +1070,6 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	int error = 0;
 	struct timer_list timer;
 	struct dpm_drv_wd_data data;
-	int dev_barrier_wakeup = 0;  
-	static char previous_dev[30] = {'\0'}; 	
 
 	dpm_wait_for_children(dev, async);
 
@@ -1081,20 +1082,13 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	 * for it, this is equivalent to the device signaling wakeup, so the
 	 * system suspend operation should be aborted.
 	 */
-	if (pm_runtime_barrier(dev) && device_may_wakeup(dev)){		
+	if (pm_runtime_barrier(dev) && device_may_wakeup(dev))
 		pm_wakeup_event(dev, 0);
-		dev_barrier_wakeup = 1; 
-	}
 
 	if (pm_wakeup_pending()) {
 		async_error = -EBUSY;
-		printk(KERN_ERR "[PM]%s: Device %s check pm_wakeup_pending(), async_error fail: code %d, previous device is %s, dev_barrier_wakeup: %d\n", 
-				__func__, dev_name(dev), async_error, previous_dev, dev_barrier_wakeup); 		
 		goto Complete;
 	}
-
-	strncpy(previous_dev, dev_name(dev), 25);  
-	previous_dev[25] = '\0';  	
 
 	data.dev = dev;
 	data.tsk = get_current();
@@ -1235,6 +1229,7 @@ int dpm_suspend(pm_message_t state)
 		if (async_error)
 			break;
 	}
+	pm_pwrcs_ret = 1;//[Power]Add for wakeup debug
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	if (!error)

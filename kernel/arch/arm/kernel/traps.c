@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#include <linux/bug.h>
 
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
@@ -36,7 +37,6 @@
 #include <asm/system_misc.h>
 
 #include <trace/events/exception.h>
-
 #include <linux/stacktrace.h>
 static int asus_save_stack = 0;
 static struct stack_trace *asus_strace = NULL;
@@ -799,6 +799,7 @@ void __pgd_error(const char *file, int line, pgd_t pgd)
 asmlinkage void __div0(void)
 {
 	printk("Division by zero in kernel.\n");
+	BUG_ON(PANIC_CORRUPTION);
 	dump_stack();
 }
 EXPORT_SYMBOL(__div0);

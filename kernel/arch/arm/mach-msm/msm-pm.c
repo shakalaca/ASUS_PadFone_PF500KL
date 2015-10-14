@@ -34,6 +34,7 @@
 #include <mach/scm.h>
 #include <mach/msm_bus.h>
 #include <mach/jtag.h>
+#include <linux/sched.h>
 #include "acpuclock.h"
 #include "avs.h"
 #include "idle.h"
@@ -41,10 +42,10 @@
 #include "scm-boot.h"
 #include "spm.h"
 #include "pm-boot.h"
+#include "clock.h"
 
 #define CREATE_TRACE_POINTS
 #include <mach/trace_msm_low_power.h>
-#include <linux/sched.h>
 
 #define SCM_CMD_TERMINATE_PC	(0x2)
 #define SCM_CMD_CORE_HOTPLUGGED (0x10)
@@ -55,11 +56,6 @@
 #define SCLK_HZ (32768)
 
 #define MAX_BUF_SIZE  512
-
-
-extern ktime_t ktime_get_v2(void);
-unsigned int pwrcs_time, pm_pwrcs_ret=0;
-
 
 static int msm_pm_debug_mask = 1;
 module_param_named(
@@ -127,6 +123,7 @@ static struct clk *l2_clk;
 static int cpu_count;
 static DEFINE_SPINLOCK(cpu_cnt_lock);
 #define SCM_HANDOFF_LOCK_ID "S:7"
+static bool need_scm_handoff_lock;
 static remote_spinlock_t scm_handoff_lock;
 
 static void (*msm_pm_disable_l2_fn)(void);
@@ -465,8 +462,8 @@ static inline void msm_pc_inc_debug_count(uint32_t cpu,
 	if (!msm_pc_debug_counters)
 		return;
 
-	cnt = readl_relaxed(msm_pc_debug_counters + cpu * 4 + offset * 4);
-	writel_relaxed(++cnt, msm_pc_debug_counters + cpu * 4 + offset * 4);
+	cnt = readl_relaxed(msm_pc_debug_counters + cpu * 4 * MSM_PC_NUM_COUNTERS + offset * 4);
+	writel_relaxed(++cnt, msm_pc_debug_counters + cpu * 4 * MSM_PC_NUM_COUNTERS + offset * 4);
 	mb();
 }
 
@@ -508,8 +505,9 @@ static int msm_pm_collapse(unsigned long unused)
 	 *
 	 * It must be acquired before releasing cpu_cnt_lock.
 	 */
-	remote_spin_lock_rlock_id(&scm_handoff_lock,
-				  REMOTE_SPINLOCK_TID_START + cpu);
+	if (need_scm_handoff_lock)
+		remote_spin_lock_rlock_id(&scm_handoff_lock,
+					  REMOTE_SPINLOCK_TID_START + cpu);
 	spin_unlock(&cpu_cnt_lock);
 
 	if (flag == MSM_SCM_L2_OFF) {
@@ -575,7 +573,9 @@ static bool __ref msm_pm_spm_power_collapse(
 	msm_jtag_restore_state();
 
 	if (collapsed) {
+#ifdef CONFIG_DEBUG_FS
 		cpu_init();
+#endif
 		local_fiq_enable();
 	}
 
@@ -679,6 +679,14 @@ static enum msm_pm_time_stats_id msm_pm_power_collapse(bool from_idle)
 
 	if (MSM_PM_DEBUG_POWER_COLLAPSE & msm_pm_debug_mask)
 		pr_info("CPU%u: %s: pre power down\n", cpu, __func__);
+
+	/* This spews a lot of messages when a core is hotplugged. This
+	 * information is most useful from last core going down during
+	 * power collapse
+	 */
+	if ((!from_idle && cpu_online(cpu))
+			|| (MSM_PM_DEBUG_IDLE_CLK & msm_pm_debug_mask))
+		clock_debug_print_enabled();
 
 	avsdscr = avs_get_avsdscr();
 	avscsr = avs_get_avscsr();
@@ -786,8 +794,6 @@ int msm_cpu_pm_enter_sleep(enum msm_pm_sleep_mode mode, bool from_idle)
 	int64_t time;
 	bool collapsed = 1;
 	int exit_stat = -1;
-	int64_t elapsed_time64;
-	unsigned int elapsed_time;	
 
 	if (MSM_PM_DEBUG_IDLE & msm_pm_debug_mask)
 		pr_info("CPU%u: %s: mode %d\n",
@@ -796,27 +802,19 @@ int msm_cpu_pm_enter_sleep(enum msm_pm_sleep_mode mode, bool from_idle)
 		pr_info("CPU%u: %s mode:%d\n",
 			smp_processor_id(), __func__, mode);
 
-	time = ktime_to_ns(ktime_get_v2());
+	if (from_idle)
+		time = sched_clock();
+
 	if (execute[mode])
 		exit_stat = execute[mode](from_idle);
-	time = ktime_to_ns(ktime_get_v2()) - time;
-	if (from_idle)
+
+	if (from_idle) {
+		time = sched_clock() - time;
 		msm_pm_ftrace_lpm_exit(smp_processor_id(), mode, collapsed);
-	else
-		exit_stat = MSM_PM_STAT_SUSPEND;
-	if (exit_stat >= 0)
-		msm_pm_add_stat(exit_stat, time);
-
-	if (!from_idle){
-		elapsed_time64 = time;
-		do_div(elapsed_time64, NSEC_PER_SEC / 100);
-		elapsed_time = elapsed_time64;
-
-		pr_info("[PM]Suspended for %d.%03d seconds\n", elapsed_time/100,elapsed_time % 100);
-		pwrcs_time=elapsed_time;
-		pm_pwrcs_ret=1;			
+		if (exit_stat >= 0)
+			msm_pm_add_stat(exit_stat, time);
 	}
-	do_div(time, 1000);
+
 	return collapsed;
 }
 
@@ -1208,6 +1206,7 @@ static int msm_cpu_pm_probe(struct platform_device *pdev)
 	struct resource *res = NULL;
 	int i;
 	struct msm_pm_init_data_type pdata_local;
+	struct device_node *lpm_node;
 	int ret = 0;
 
 	memset(&pdata_local, 0, sizeof(struct msm_pm_init_data_type));
@@ -1234,11 +1233,21 @@ static int msm_cpu_pm_probe(struct platform_device *pdev)
 		msm_pc_debug_counters_phys = 0;
 	}
 
-	ret = remote_spin_lock_init(&scm_handoff_lock, SCM_HANDOFF_LOCK_ID);
-	if (ret) {
-		pr_err("%s: Failed initializing scm_handoff_lock (%d)\n",
-			__func__, ret);
-		return ret;
+	lpm_node = of_parse_phandle(pdev->dev.of_node, "qcom,lpm-levels", 0);
+	if (!lpm_node) {
+		pr_warn("Could not get qcom,lpm-levels handle\n");
+		return -EINVAL;
+	}
+	need_scm_handoff_lock = of_property_read_bool(lpm_node,
+						      "qcom,allow-synced-levels");
+	if (need_scm_handoff_lock) {
+		ret = remote_spin_lock_init(&scm_handoff_lock,
+					    SCM_HANDOFF_LOCK_ID);
+		if (ret) {
+			pr_err("%s: Failed initializing scm_handoff_lock (%d)\n",
+				__func__, ret);
+			return ret;
+		}
 	}
 
 	if (pdev->dev.of_node) {

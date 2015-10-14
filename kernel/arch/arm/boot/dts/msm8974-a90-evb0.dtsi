@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -156,74 +156,8 @@
 	};
 // --- ASUS_BSP : add for ASUS touch
 
-//+++ ASUS BSP......."BLSP3 : Sensors"
-	i2c@f9925000 {
-		// ASUS_BSP +++ Peter_Lu "cm36283 Lightsensor"
-		cm36283@60 {
-			compatible = "capella,cm36283";
-			reg = <0x60>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <74 0x2>;
-			cm36283,irq-gpio = <&msmgpio 74 0x00>;
-		};
-		// ASUS_BSP ---
-		// ASUS_BSP +++ Jiunhau Wang "[A86][Sensor][NA][Spec] Porting 9-axis sensor"
-		ami306@0E {
-			compatible = "aichi,ami306";
-			reg = <0x0E>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <76 0x2>;
-			vdd_ana-supply = <&pm8941_l18>;
-			vcc_i2c-supply = <&pm8941_lvs1>;
-			ami306,irq-gpio = <&msmgpio 76 0x00>;
-			ami306,ready-gpio = <&msmgpio 81 0x00>;
-		};
-		mpu6500@68 {
-			compatible = "invensense,mpu6500";
-			reg = <0x68>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <66 0x2>;
-			vdd_ana-supply = <&pm8941_l18>;
-			vcc_i2c-supply = <&pm8941_lvs1>;
-			mpu6500,irq-gpio = <&msmgpio 66 0x00>;
-			mpu6500,fsync-gpio = <&pm8941_gpios 01 0x01>;
-		};
-		// ASUS_BSP --- Jiunhau Wang "[A86][Sensor][NA][Spec] Porting 9-axis sensor"
-	};
-//--- ASUS BSP
-
 //+++ ASUS BSP......."BLSP6 : Pad bus"
 i2c@f9928000 {
-		//+++ ASUS_BSP Eason +++
-		microp@15 {
-			compatible = "nuvoton,microp";
-			reg = <0x15>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <9 0x2>;
-			microp,irq-gpio = <&msmgpio 9 0x00>;
-		};
-		//--- ASUS_BSP Eason ---
-
-		// ASUS_BSP +++ Peter_Lu "Pad Lightsensor"
-		al3010@1c {
-			compatible = "dyna,al3010";
-			reg = <0x1c>;
-		};
-		// ASUS_BSP ---
-
-		// ASUS_BSP +++ ShawnHuang CAP1106
-		cap1106_i2c@28 {
-			compatible = "cap,cap1106";
-			reg = <0x28>;
-		};
-		// ASUS_BSP --- ShawnHuang CAP1106
-		
-		//ASUS BSP Wei +++ STDP2600
-		stpd2600@74{
-			compatible = "stpd,stpd2600";
-			reg = <0x74>;
-		};
-		//ASUS BSP Wei --- STDP2600
 
 		// ASUS_BSP +++ Louis, "Pad TCON control driver"
 		nvt71890_i2c@60 {
@@ -232,19 +166,10 @@ i2c@f9928000 {
 		};
 		// ASUS_BSP --- Louis, "Pad TCON control driver"
 		
-		// ASUS_BSP +++ SiS9257 Touch
-		sis_i2c_ts@5C {
-			compatible = "sis,sis_i2c_ts";
-			reg = <0x5C>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <9 0x2>;
-			sis_i2c_ts,irq-gpio = <&msmgpio 9 0x00>;
-		};
-		// ASUS_BSP --- SiS9257 Touch
 	};
 //--- ASUS BSP......."BLSP6 : Pad bus"
 
-//+++ ASUS BSP......."BLSP3 : Charger, Gauge, NFC"
+//+++ ASUS BSP......."BLSP3 : Charger, Gauge
 	i2c@f9966000 {
 		summit_smb346_i2c@2D {
 			compatible = "summit,smb346";
@@ -271,38 +196,8 @@ i2c@f9928000 {
 			interrupt-parent = <&msmgpio>;
 			
 		};
-		//+++Porting NFC's kernel+++
-		pn544@28 {
-			//compatible = "nxp,nxp_pn544";
-			compatible = "nxp,pn544";
-			reg = <0x28>;
-			interrupt-parent = <&msmgpio>;
-			interrupts = <59 0x2>;
-			nxp,irq-gpio = <&msmgpio 59 0x00>;
-			nxp,nfc-ven = <&msmgpio 79 0x00>;
-			nxp,download-gpio = <&pm8941_gpios 24 0x00>;
-		};
-		//---Porting NFC's kernel---
 	};
 //--- ASUS BSP
-
-// +++ ASUS BSP Bernard Ong: mydp 7808
-	i2c@f9968000{ 
-		colorado_i2c@39 {
-			compatible = "analogix,slimport";
-			reg = <0x39>;
-			interrupt-parent = <&msmgpio>;
-			#interrupt-cells = <2>;
-			interrupts = <82 0x2 61 0x2>;
-			vcc_1v-supply = <&pm8941_l3>;
-			slimport,gpio_rst = <&msmgpio 45 0x00>; //Reset, MYDP_RESETN_N
-			slimport,gpio_cbl_det = <&msmgpio 61 0x00>; //cable detect, MYDP_CABLE_DET
-			slimport,gpio_pw_dwn = <&msmgpio 83 0x00>; //chip power down, MYDP_EN_N
-			slimport,gpio_usb_id = <&msmgpio 82 0x00>; //usb_hs_id
-			slimport,hdmi-tx-map = <&mdss_hdmi_tx>;  //ASUS BSP Wei +++
-		};
-	};
-//--- ASUS BSP Bernard Ong: mydp 7808
 
 // --- .....................................................I2C bus part.................................................... ---//
 
@@ -329,7 +224,7 @@ i2c@f9928000 {
 			linux,input-type = <1>;
 			linux,code = <115>;
 			//gpio-key,wakeup;
-			debounce-interval = <15>;
+			debounce-interval = <1>;
 		};
 
 		vol_down {
@@ -340,7 +235,7 @@ i2c@f9928000 {
 			linux,input-type = <1>;
 			linux,code = <114>;
 			//gpio-key,wakeup;
-			debounce-interval = <15>;
+			debounce-interval = <1>;
 		};
 
 	        pwr_key {
@@ -351,7 +246,7 @@ i2c@f9928000 {
 	            linux,input-type = <1>;
 	            linux,code = <116>;
 	            gpio-key,wakeup;
-	            debounce-interval = <15>;
+	            debounce-interval = <1>;
 	        };
 	};
 //ASUS BSP freddy--
@@ -379,6 +274,7 @@ i2c@f9928000 {
 		qcom,hdmi-audio-rx;
 		qcom,us-euro-gpios = <&pm8941_gpios 20 0>;
 		qcom,cdc-micbias2-headset-only;
+		qcom,mbhc-audio-jack-type = "6-pole-jack";
 	};
 
 	usb2_otg_sw: regulator-tpd4s214 {
@@ -929,3 +825,34 @@ i2c@f9928000 {
        status = "disable"; // Add for ASUS Display driver
        qcom,cont-splash-enabled;
 };
+
+&dsi_generic_720p_cmd {
+       qcom,cont-splash-enabled;
+};
+
+&dsi_jdi_1080_vid {
+       qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_video_1 {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_0 {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <7>;
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual_jdi_cmd_1 {
+	qcom,cont-splash-enabled;
+};
+

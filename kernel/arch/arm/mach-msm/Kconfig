@@ -339,7 +339,6 @@ config ARCH_FSM9900
 	select MSM_GPIOMUX
 	select MULTI_IRQ_HANDLER
 	select PM_DEVFREQ
-	select MSM_DEVFREQ_CPUBW
 	select MSM_PIL
 	select MSM_NATIVE_RESTART
 	select MSM_RESTART_V2
@@ -1579,20 +1578,6 @@ config MSM_PCIE
 	  Enables the PCIe functionality by configures PCIe core on
 	  MSM chipset and by enabling the ARM PCI framework extension.
 
-config MSM_RPC_SDIO_XPRT
-	depends on MSM_SDIO_AL
-	default y
-	bool "MSM SDIO XPRT Layer"
-	help
-	  SDIO Transport Layer for RPC Rouer
-
-config MSM_RPC_SDIO_DEBUG
-	depends on MSM_RPC_SDIO_XPRT
-	default y
-	bool "MSM SDIO XPRT debug support"
-	help
-	  Support for debugging SDIO XPRT
-
 config MSM_SMD_DEBUG
 	depends on MSM_SMD
 	default y
@@ -1600,21 +1585,6 @@ config MSM_SMD_DEBUG
 	help
 	  Support for debugging the SMD for communication
 	  between the ARM9 and ARM11
-
-config MSM_SDIO_AL
-	depends on ((ARCH_MSM7X30 || MACH_MSM8X60_FUSN_FFA || MACH_TYPE_MSM8X60_FUSION) && HAS_WAKELOCK)
-	default y
-	tristate "SDIO-Abstraction-Layer"
-	help
-	  Support MSM<->MDM Communication over SDIO bus.
-	  MDM SDIO-Client should have pipes support.
-
-config MSM_SDIO_DMUX
-	bool "SDIO Data Mux Driver"
-	depends on MSM_SDIO_AL
-	default n
-	help
-	  Support Muxed Data Channels over SDIO interface.
 
 config MSM_BAM_DMUX
 	bool "BAM Data Mux Driver"
@@ -1696,16 +1666,6 @@ config MSM_SMD_NMEA
 
 	  If in doubt, say yes.
 
-config MSM_SDIO_TTY
-	bool "SDIO TTY Driver"
-	depends on MSM_SDIO_AL
-	default n
-	help
-	  Provides a TTY driver SDIO TTY
-	  This driver can be used by user space
-	  applications for passing data through the
-	  SDIO interface.
-
 config MSM_SMD_TTY
 	bool "SMD TTY Driver"
 	depends on MSM_SMD
@@ -1733,13 +1693,6 @@ config MSM_SMD_PKT
 
 	  If in doubt, say yes.
 
-config MSM_SDIO_CMUX
-	bool "SDIO CMUX Driver"
-	depends on MSM_SDIO_AL
-	default n
-	help
-	  Provides a Muxed port interface over SDIO QMI
-
 config MSM_DSPS
 	bool "Sensors DSPS driver"
 	depends on (MSM_PIL && (ARCH_MSM8X60 || ARCH_MSM8960))
@@ -1751,13 +1704,6 @@ config MSM_DSPS
 	  themself.
 	  The number of clocks and their name may vary between targets.
 	  It also triggers the PIL to load the DSPS firmware.
-
-config MSM_SDIO_CTL
-	bool "SDIO CTL Driver"
-	depends on MSM_SDIO_CMUX
-	default n
-	help
-	  Provides a binary SDIO control port interface.
 
 config MSM_ONCRPCROUTER
 	depends on MSM_SMD
@@ -1890,31 +1836,6 @@ config MSM_RPCSERVER_HANDSET
 	help
 	  Support for receiving handset events like headset detect,
 	  headset switch and clamshell state.
-
-config MSM_RMT_STORAGE_CLIENT
-	depends on (ARCH_MSM && MSM_ONCRPCROUTER)
-	default n
-	bool "Remote Storage RPC client"
-	help
-	  Provide RPC mechanism for remote processors to access storage
-	  device on apps processor.
-
-config MSM_RMT_STORAGE_CLIENT_STATS
-	depends on (MSM_RMT_STORAGE_CLIENT && DEBUG_FS)
-	default n
-	bool "Remote storage RPC client performance statistics"
-	help
-	  Collects performance statistics and shows this information
-	  through a debugfs file rmt_storage_stats.
-
-config MSM_SDIO_SMEM
-        depends on MSM_SDIO_AL
-        default n
-        bool "SDIO SMEM for remote storage"
-        help
-          Copies data from remote MDM9K memory to local MSM8x60
-	  memory. Used by remote storage client to shadow
-	  MDM9K filesystem.
 
 config MSM_DALRPC
 	bool "DAL RPC support"
@@ -2590,7 +2511,7 @@ config MSM_SHOW_RESUME_IRQ
 	bool "Enable logging of interrupts that could have caused resume"
 	depends on (ARM_GIC || PMIC8058)
 	default y if PMIC8058
-	default y
+	default n
 	help
 		This option logs wake up interrupts that have triggered just before
 		the resume loop unrolls. Say Y if you want to debug why the system
@@ -3067,6 +2988,13 @@ config MSM_UARTDM_Core_v14
 	depends on SERIAL_MSM_HS
 	help
 		Select if BLSP based UART Core v.14 or higher is present.
+
+config MSM_COMMON_LOG
+	bool "Use to export symbols for parsing memory dump"
+	help
+	 Use this to export symbols to a memory dump table. This table
+	 can be used by post analysis tools to extract information from
+	 memory when device crashes.
 
 config MSM_BOOT_STATS
 	bool "Use MSM boot stats reporting"

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,17 +26,6 @@
 #include <mach/msm_ipc_logging.h>
 
 #include "smem_private.h"
-
-/**
- * OVERFLOW_ADD_UNSIGNED() - check for unsigned overflow
- *
- * @type: type to check for overflow
- * @a: left value to use
- * @b: right value to use
- * @returns: true if a + b will result in overflow; false otherwise
- */
-#define OVERFLOW_ADD_UNSIGNED(type, a, b) \
-	(((type)~0 - (a)) < (b) ? true : false)
 
 #define MODEM_SBL_VERSION_INDEX 7
 #define SMEM_VERSION_INFO_SIZE (32 * 4)
@@ -926,7 +915,7 @@ static int init_smem_remote_spinlock(void)
 	return rc;
 }
 
-extern int get_ssr_enable_ramdumps(void); // ASUS_BSP+ "save SSR reason"
+extern int get_ssr_enable_ramdumps(void);/*ASUS-BBSP Skip ramdump or panic in a specific reason+*/
 
 /**
  * smem_initialized_check - Reentrant check that smem has been initialized
@@ -1010,7 +999,7 @@ static int restart_notifier_cb(struct notifier_block *this,
 		remote_spin_release(&remote_spinlock, notifier->processor);
 		remote_spin_release_all(notifier->processor);
 
-		if (smem_ramdump_dev && get_ssr_enable_ramdumps()) { // ASUS_BSP+ "save SSR reason"
+		if (smem_ramdump_dev && get_ssr_enable_ramdumps()) {/*ASUS-BBSP Skip ramdump or panic in a specific reason+*/
 			int ret;
 
 			SMEM_DBG("%s: saving ramdump\n", __func__);
@@ -1383,7 +1372,7 @@ int __init msm_smem_init(void)
 
 	registered = true;
 
-	smem_ipc_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smem");
+	smem_ipc_log_ctx = ipc_log_context_create(NUM_LOG_PAGES, "smem", 0);
 	if (!smem_ipc_log_ctx) {
 		pr_err("%s: unable to create logging context\n", __func__);
 		msm_smem_debug_mask = 0;

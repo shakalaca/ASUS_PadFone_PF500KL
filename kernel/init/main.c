@@ -317,7 +317,7 @@ EXPORT_SYMBOL(g_ASUS_hwID);
  __setup("HW_ID=", set_hardware_id);
  
  //--- ASUS_BSP : miniporting
-
+/*  //ASUS BSP Bernard, unuse in recovery mode
 //+++ ASUS_BSP: Louis, distinguish recovery or normal boot
 bool g_Recovery = false;
 EXPORT_SYMBOL(g_Recovery);
@@ -334,7 +334,7 @@ static int set_recovery_id(char *str)
 }
 __setup("RECOVERY=", set_recovery_id);
 //--- ASUS_BSP: Louis
-
+*/
 //Austin+++, determine panel is connected or not
 bool g_panel_connect = true;
 EXPORT_SYMBOL(g_panel_connect);
@@ -379,7 +379,19 @@ EXPORT_SYMBOL(g_A90_cpuID);
 static int set_cpu_id(char *str)
 {
 	strcpy(cpurv_info,"CPU RV : ");
-	if ( memcmp("7b80e1", (str+2) , 6) == 0 )
+	if ( memcmp("7b00e1", (str+2) , 6) == 0 )
+	{
+		g_A90_cpuID = 0x7b0;	//MSM8974
+		printk("CPUID = %x\n",g_A90_cpuID);
+		strcat(cpurv_info,str);
+	}
+	else if ( memcmp("7b10e1", (str+2) , 6) == 0 )
+	{
+		g_A90_cpuID = 0x7b1;	//MSM8974
+		printk("CPUID = %x\n",g_A90_cpuID);
+		strcat(cpurv_info,str);
+	}
+	else if ( memcmp("7b80e1", (str+2) , 6) == 0 )
 	{
 		g_A90_cpuID = 0x7b8;	//MSM8974AB
 		printk("CPUID = %x\n",g_A90_cpuID);
@@ -390,13 +402,7 @@ static int set_cpu_id(char *str)
 		g_A90_cpuID = 0x7bc;	//MSM8974AB
 		printk("CPUID = %x\n",g_A90_cpuID);
 		strcat(cpurv_info,str);
-	}
-	else if ( memcmp("7b40e1", (str+2) , 6) == 0 )
-	{
-		g_A90_cpuID = 0x7b4;	//MSM8974AC
-		printk("CPUID = %x\n",g_A90_cpuID);
-		strcat(cpurv_info,str);
-	}
+	}	
 	else
 	{
 		g_A90_cpuID = -1;
@@ -1088,7 +1094,7 @@ static int __init_or_module do_one_initcall_debug(initcall_t fn)
 	ktime_t calltime, delta, rettime;
 	unsigned long long duration;
 	int ret;
-	
+
 	if (initcall_debug)
 		printk(KERN_DEBUG "calling  %pF @ %i\n", fn, task_pid_nr(current));
 	calltime = ktime_get();
@@ -1099,15 +1105,13 @@ static int __init_or_module do_one_initcall_debug(initcall_t fn)
 	if (initcall_debug)
 		printk(KERN_DEBUG "initcall %pF returned %d after %lld usecs\n", fn,
 			ret, duration);
-			
-#ifndef ASUS_SHIP_BUILD
-	if (initcall_debug==0)
-	{
+
+	if (initcall_debug == false) {
 		if (duration > 100000)
-			printk(KERN_WARNING "[debuginit] initcall %pF returned %d after %lld usecs\n", fn,
+			printk(KERN_WARNING 
+				"[debuginit] initcall %pF returned %d after %lld usecs\n", fn,
 				ret, duration);
 	}
-#endif
 
 	return ret;
 }
@@ -1117,14 +1121,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	int count = preempt_count();
 	int ret;
 
-#ifndef ASUS_SHIP_BUILD
 	ret = do_one_initcall_debug(fn);
-#else
-	if (initcall_debug)
-		ret = do_one_initcall_debug(fn);
-	else
-		ret = fn();
-#endif		
 
 	msgbuf[0] = 0;
 
@@ -1325,8 +1322,6 @@ static int __init kernel_init(void * unused)
 		prepare_namespace();
 	}
 
-	printk("ASUS_SW_VER=%s\n", ASUS_SW_VER);
-	
 	/*
 	 * Ok, we have completed the initial bootup, and
 	 * we're essentially up and running. Get rid of the

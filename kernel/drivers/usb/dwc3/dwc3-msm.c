@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -254,6 +254,8 @@ struct dwc3_msm {
 	struct clk		*sleep_clk;
 	struct clk		*hsphy_sleep_clk;
 	struct clk		*utmi_clk;
+	unsigned int		utmi_clk_rate;
+	struct clk		*utmi_clk_src;
 	struct regulator	*hsusb_3p3;
 	struct regulator	*hsusb_1p8;
 	struct regulator	*hsusb_vddcx;
@@ -284,6 +286,7 @@ struct dwc3_msm {
 	struct qpnp_adc_tm_chip *adc_tm_dev;
 	struct delayed_work	init_adc_work;
 	bool			id_adc_detect;
+	struct qpnp_vadc_chip	*vadc_dev;
 	u8			dcd_retries;
 	u32			bus_perf_client;
 	struct msm_bus_scale_pdata	*bus_scale_table;
@@ -304,6 +307,7 @@ struct dwc3_msm {
 	unsigned long		lpm_flags;
 #define MDWC3_PHY_REF_AND_CORECLK_OFF	BIT(0)
 #define MDWC3_TCXO_SHUTDOWN		BIT(1)
+#define MDWC3_ASYNC_IRQ_WAKE_CAPABILITY	BIT(2)
 
 	u32 qscratch_ctl_val;
 	dev_t ext_chg_dev;
@@ -1161,7 +1165,7 @@ void msm_dwc3_restart_usb_session(struct usb_gadget *gadget)
 	struct dwc3 *dwc = container_of(gadget, struct dwc3, gadget);
 	struct dwc3_msm *mdwc = dev_get_drvdata(dwc->dev->parent);
 
-	if (mdwc)
+	if (!mdwc)
 		return;
 
 	dev_dbg(mdwc->dev, "%s\n", __func__);
@@ -1515,6 +1519,48 @@ static void dwc3_msm_ss_phy_reg_init(struct dwc3_msm *mdwc)
 				0x07f03f07, 0x07f01605);
 }
 
+static void dwc3_msm_update_ref_clk(struct dwc3_msm *mdwc)
+{
+	u32 guctl, gfladj = 0;
+
+	guctl = dwc3_msm_read_reg(mdwc->base, DWC3_GUCTL);
+	guctl &= ~DWC3_GUCTL_REFCLKPER;
+
+	/* GFLADJ register is used starting with revision 2.50a */
+	if (dwc3_msm_read_reg(mdwc->base, DWC3_GSNPSID) >= DWC3_REVISION_250A) {
+		gfladj = dwc3_msm_read_reg(mdwc->base, DWC3_GFLADJ);
+		gfladj &= ~DWC3_GFLADJ_REFCLK_240MHZDECR_PLS1;
+		gfladj &= ~DWC3_GFLADJ_REFCLK_240MHZ_DECR;
+		gfladj &= ~DWC3_GFLADJ_REFCLK_LPM_SEL;
+		gfladj &= ~DWC3_GFLADJ_REFCLK_FLADJ;
+	}
+
+	/* Refer to SNPS Databook Table 6-55 for calculations used */
+	switch (mdwc->utmi_clk_rate) {
+	case 19200000:
+		guctl |= 52 << __ffs(DWC3_GUCTL_REFCLKPER);
+		gfladj |= 12 << __ffs(DWC3_GFLADJ_REFCLK_240MHZ_DECR);
+		gfladj |= DWC3_GFLADJ_REFCLK_240MHZDECR_PLS1;
+		gfladj |= DWC3_GFLADJ_REFCLK_LPM_SEL;
+		gfladj |= 200 << __ffs(DWC3_GFLADJ_REFCLK_FLADJ);
+		break;
+	case 24000000:
+		guctl |= 41 << __ffs(DWC3_GUCTL_REFCLKPER);
+		gfladj |= 10 << __ffs(DWC3_GFLADJ_REFCLK_240MHZ_DECR);
+		gfladj |= DWC3_GFLADJ_REFCLK_LPM_SEL;
+		gfladj |= 2032 << __ffs(DWC3_GFLADJ_REFCLK_FLADJ);
+		break;
+	default:
+		dev_warn(mdwc->dev, "Unsupported utmi_clk_rate: %u\n",
+				mdwc->utmi_clk_rate);
+		break;
+	}
+
+	dwc3_msm_write_reg(mdwc->base, DWC3_GUCTL, guctl);
+	if (gfladj)
+		dwc3_msm_write_reg(mdwc->base, DWC3_GFLADJ, gfladj);
+}
+
 /* Initialize QSCRATCH registers for HSPHY and SSPHY operation */
 static void dwc3_msm_qscratch_reg_init(struct dwc3_msm *mdwc,
 						unsigned event_status)
@@ -1555,6 +1601,7 @@ static void dwc3_msm_qscratch_reg_init(struct dwc3_msm *mdwc,
 					PARAMETER_OVERRIDE_X_REG, 0x03FFFFFF,
 					override_phy_init & 0x03FFFFFF);
 	} else {
+		mdwc->hsphy_init_seq = 0xd194e4;
 		if (mdwc->hsphy_init_seq)
 			dwc3_msm_write_readback(mdwc->base,
 						PARAMETER_OVERRIDE_X_REG, 0x03FFFFFF,
@@ -1592,6 +1639,7 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned event)
 	case DWC3_CONTROLLER_ERROR_EVENT:
 		dev_info(mdwc->dev, "DWC3_CONTROLLER_ERROR_EVENT received\n");
 		dwc3_msm_dump_phy_info(mdwc);
+		dwc3_msm_write_reg(mdwc->base, DWC3_DEVTEN, 0);
 		/*
 		 * schedule work for doing block reset for recovery from erratic
 		 * error event.
@@ -1607,6 +1655,7 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned event)
 				"DWC3_CONTROLLER_POST_RESET_EVENT received\n");
 		dwc3_msm_qscratch_reg_init(mdwc,
 					DWC3_CONTROLLER_POST_RESET_EVENT);
+		dwc3_msm_update_ref_clk(mdwc);
 		dwc->tx_fifo_size = mdwc->tx_fifo_size;
 		break;
 	case DWC3_CONTROLLER_POST_INITIALIZATION_EVENT:
@@ -1647,10 +1696,23 @@ static void dwc3_block_reset_usb_work(struct work_struct *w)
 {
 	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
 						usb_block_reset_work);
+	u32 reg;
 
 	dev_dbg(mdwc->dev, "%s\n", __func__);
 
 	dwc3_msm_block_reset(&mdwc->ext_xceiv, true);
+
+	reg = (DWC3_DEVTEN_EVNTOVERFLOWEN |
+			DWC3_DEVTEN_CMDCMPLTEN |
+			DWC3_DEVTEN_ERRTICERREN |
+			DWC3_DEVTEN_WKUPEVTEN |
+			DWC3_DEVTEN_ULSTCNGEN |
+			DWC3_DEVTEN_CONNECTDONEEN |
+			DWC3_DEVTEN_USBRSTEN |
+			DWC3_DEVTEN_DISCONNEVTEN);
+	dwc3_msm_write_reg(mdwc->base, DWC3_DEVTEN, reg);
+
+
 }
 
 static void dwc3_chg_enable_secondary_det(struct dwc3_msm *mdwc)
@@ -1768,7 +1830,7 @@ static void asus_usb_detect_work(struct work_struct *w)
 #ifdef CONFIG_CHARGER_ASUS
 	asus_chg_set_chg_mode(ASUS_CHG_SRC_USB);
 #endif
-	printk("[USB] set_chg_mode: USB\n");
+	printk("[usb_dwc3] set_chg_mode: USB\n");
 	//ASUS_BSP+++ "[USB][NA][Other] Add USB event log"
 	ASUSEvtlog("[USB] set_chg_mode: USB\n");
 	//ASUS_BSP--- "[USB][NA][Other] Add USB event log"
@@ -1782,13 +1844,13 @@ static void asus_chg_detect_work(struct work_struct *w)
 #ifdef CONFIG_CHARGER_ASUS
 		asus_chg_set_chg_mode(ASUS_CHG_SRC_UNKNOWN);
 #endif
-		printk("[USB] set_chg_mode: UNKNOWN\n");
+		printk("[usb_dwc3] set_chg_mode: UNKNOWN\n");
 		//ASUS_BSP+++ "[USB][NA][Other] Add USB event log"
 		ASUSEvtlog("[USB] set_chg_mode: UNKNOWN\n");
 		//ASUS_BSP--- "[USB][NA][Other] Add USB event log"
 	}
 	else{
-		printk("[USB] vbus not active, ignore set_chg_mode: UNKNOWN\n");
+		printk("[usb_dwc3] vbus not active, ignore set_chg_mode: UNKNOWN\n");
 	}
 }
 //ASUS_BSP--- "[USB][NA][Spec] add ASUS Charger support"
@@ -1885,24 +1947,22 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 //ASUS_BSP+++ "[USB][NA][Spec] add ASUS Charger support"
 #ifdef CONFIG_CHARGER_ASUS
 		if(mdwc->charger.chg_type != DWC3_SDP_CHARGER){
-//ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
+			//ASUS_BSP+++ BennyCheng "add phone mode usb OTG support"
 #ifdef CONFIG_ASUS_CARKIT
 			if(!mdwc->ext_xceiv.host_mode){
 				if(asus_state_otg == ASUS_OTG_NONE){
 					asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
-					printk("[USB] set_chg_mode: ASUS AC\n");
-					ASUSEvtlog("[USB] set_chg_mode: ASUS AC\n");
+					printk("[usb_dwc3] set_chg_mode: ASUS AC\n");
 				}
 			}else{
-				printk("[USB] In Pad not notify set_chg_mode: ASUS AC\n");
+				printk("[usb_dwc3] In Pad not notify set_chg_mode: ASUS AC\n");
 			}
 #else
 			if(!mdwc->ext_xceiv.host_mode){
 				asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
-				printk("[USB] set_chg_mode: ASUS AC\n");
-				ASUSEvtlog("[USB] set_chg_mode: ASUS AC\n");
+				printk("[usb_dwc3] set_chg_mode: ASUS AC\n");
 			}else{
-				printk("[USB] In Pad not notify set_chg_mode: ASUS AC\n");
+				printk("[usb_dwc3] In Pad not notify set_chg_mode: ASUS AC\n");
 			}
 #endif
 //ASUS_BSP--- BennyCheng "add phone mode usb OTG support"
@@ -1935,7 +1995,7 @@ static void dwc3_start_chg_det(struct dwc3_charger *charger, bool start)
 #ifdef CONFIG_CHARGER_ASUS
 		asus_chg_set_chg_mode(ASUS_CHG_SRC_NONE);
 #endif
-		printk("[USB] set_chg_mode: NONE\n");
+		printk("[usb_dwc3] set_chg_mode: NONE\n");
 		//ASUS_BSP+++ "[USB][NA][Other] Add USB event log"
 		ASUSEvtlog("[USB] set_chg_mode: NONE\n");
 		//ASUS_BSP--- "[USB][NA][Other] Add USB event log"
@@ -1945,6 +2005,11 @@ static void dwc3_start_chg_det(struct dwc3_charger *charger, bool start)
 		charger->chg_type = DWC3_INVALID_CHARGER;
 		return;
 	}
+
+	/* Skip if charger type was already detected externally */
+	if (mdwc->chg_state == USB_CHG_STATE_DETECTED &&
+		charger->chg_type != DWC3_INVALID_CHARGER)
+		return;
 
 	mdwc->chg_state = USB_CHG_STATE_UNDEFINED;
 	charger->chg_type = DWC3_INVALID_CHARGER;
@@ -1976,6 +2041,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 	int ret;
 	bool host_ss_active;
 	bool host_ss_suspend;
+	bool device_bus_suspend;
 
 	dev_dbg(mdwc->dev, "%s: entering lpm\n", __func__);
 
@@ -2012,6 +2078,8 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 	host_bus_suspend = mdwc->ext_xceiv.host_mode == 1 && mdwc->otg_xceiv->otg->host;
 	//ASUS_BSP--- BennyCheng "fix wrong condition for host mode suspend/resume"
 	host_ss_suspend = host_bus_suspend && host_ss_active;
+	device_bus_suspend = ((mdwc->charger.chg_type == DWC3_SDP_CHARGER) ||
+				 (mdwc->charger.chg_type == DWC3_CDP_CHARGER));
 
 	if (!dcp && !host_bus_suspend)
 		dwc3_msm_write_reg(mdwc->base, QSCRATCH_CTRL_REG,
@@ -2112,12 +2180,16 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 	atomic_set(&mdwc->in_lpm, 1);
 
 	if (mdwc->hs_phy_irq) {
+		/*
+		 * with DCP or during cable disconnect, we dont require wakeup
+		 * using HS_PHY_IRQ. Hence enable wakeup only in case of host
+		 * bus suspend and device bus suspend.
+		 */
+		if (host_bus_suspend || device_bus_suspend) {
+			enable_irq_wake(mdwc->hs_phy_irq);
+			mdwc->lpm_flags |= MDWC3_ASYNC_IRQ_WAKE_CAPABILITY;
+		}
 		enable_irq(mdwc->hs_phy_irq);
-		/* with DCP we dont require wakeup using HS_PHY_IRQ */
-		//ASUS_BSP+++ BennyCheng "disable irq wake of hs_phy_irq for client mode during low power mode"
-		if (!host_bus_suspend)
-		//ASUS_BSP--- BennyCheng "disable irq wake of hs_phy_irq for client mode during low power mode"
-			disable_irq_wake(mdwc->hs_phy_irq);
 	}
 
 	//ASUS_BSP+++ BennyCheng "add dwc3 pm lock timeout check"
@@ -2129,7 +2201,7 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 	//ASUS_BSP+++ BennyCheng "add mutex to protect suspend/resume function"
 	mutex_unlock(&asus_dwc3_mutex);
 
-	dev_info(mdwc->dev, "DWC3 in low power mode\n");
+	dev_info(mdwc->dev, "[usb_dwc3] DWC3 in low power mode\n");
 	//ASUS_BSP--- BennyCheng "add mutex to protect suspend/resume function"
 
 	return 0;
@@ -2263,11 +2335,12 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 		enable_irq(mdwc->hs_phy_irq);
 		mdwc->lpm_irq_seen = false;
 	}
-	/* it must DCP disconnect, re-enable HS_PHY wakeup IRQ */
-	//ASUS_BSP+++ BennyCheng "disable irq wake of hs_phy_irq for client mode during low power mode"
-	if (mdwc->hs_phy_irq && !host_bus_suspend)
-	//ASUS_BSP--- BennyCheng "disable irq wake of hs_phy_irq for client mode during low power mode"
-		enable_irq_wake(mdwc->hs_phy_irq);
+	/* Disable wakeup capable for HS_PHY IRQ, if enabled */
+	if (mdwc->hs_phy_irq &&
+			(mdwc->lpm_flags & MDWC3_ASYNC_IRQ_WAKE_CAPABILITY)) {
+			disable_irq_wake(mdwc->hs_phy_irq);
+			mdwc->lpm_flags &= ~MDWC3_ASYNC_IRQ_WAKE_CAPABILITY;
+	}
 
 	//ASUS_BSP+++ BennyCheng "add dwc3 pm lock timeout check"
 	if (mdwc->ext_xceiv.host_mode) {
@@ -2280,7 +2353,7 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 	mutex_unlock(&asus_dwc3_mutex);
 	//ASUS_BSP--- BennyCheng "add mutex to protect suspend/resume function"
 
-	dev_info(mdwc->dev, "DWC3 exited from low power mode\n");
+	dev_info(mdwc->dev, "[usb_dwc3] DWC3 exited from low power mode\n");
 
 	return 0;
 }
@@ -2953,12 +3026,8 @@ static int myxtoi(const char *name)
 		case 'a' ... 'f':
 			val = 16*val+(*name-'a'+10);
 			break;
-		case '\n':
-		case '\0':
-			return val;
 		default:
-			printk("[usb_dwc3] invaild eye diagram parameter!! ASCII 0x%X is not a hex number!!\n", *name);
-			return 0;
+			return val;
 		}
 	}
 }
@@ -3698,7 +3767,8 @@ static int asus_dwc3_microp_event(struct notifier_block *this, unsigned long eve
 			asus_dwc3_set_pad_camera_power(0);
 			asus_dwc3_set_pad_hub_power(0);
 
-			queue_delayed_work_on(0, microp_cb_delay_wq, &microp_cb_delay_work, 2 * HZ);
+			if(g_otg_check_at_boot)
+				queue_delayed_work_on(0, microp_cb_delay_wq, &microp_cb_delay_work, 2 * HZ);
 
 			printk("[usb_dwc3] Microp ADD Event ---\n");
 		break;
@@ -3813,32 +3883,6 @@ void asus_dwc3_host_power_off(void)
 		dev_info(mdwc->dev, "%s()---\n", __func__);
 	}
 }
-
-//ASUS_BSP+++ BennyCheng "speed up resume time by active microp earlier"
-static void asus_dwc3_host_power_on(struct work_struct *work)
-{
-	struct dwc3_msm *mdwc = context;
-
-	dev_info(mdwc->dev, "%s()+++\n", __func__);
-
-	if (mdwc->ext_xceiv.host_mode) {
-		if (AX_MicroP_IsP01Connected() && pad_exist()) {
-			asus_dwc3_set_microp_mode(MICROP_ACTIVE);
-		}
-	}
-
-	dev_info(mdwc->dev,  "%s()---\n", __func__);
-}
-static DECLARE_WORK(asus_dwc3_host_power_on_work, asus_dwc3_host_power_on);
-
-void asus_dwc3_host_power_on_wq(void)
-{
-	struct dwc3_msm *mdwc = context;
-
-	dev_info(mdwc->dev, "%s: active microp\n", __func__);
-	queue_work(system_nrt_wq, &asus_dwc3_host_power_on_work);
-}
-//ASUS_BSP--- BennyCheng "speed up resume time by active microp earlier"
 
 static void asus_dwc3_early_suspend_delay_work(struct work_struct *w)
 {
@@ -4155,6 +4199,29 @@ static irqreturn_t msm_dwc3_irq(int irq, void *data)
 
 //ASUS_BSP+++ "[USB][NA][Spec] add ASUS Charger support"
 #ifndef CONFIG_CHARGER_ASUS
+
+static int
+get_prop_usbin_voltage_now(struct dwc3_msm *mdwc)
+{
+	int rc = 0;
+	struct qpnp_vadc_result results;
+
+	if (IS_ERR_OR_NULL(mdwc->vadc_dev)) {
+		mdwc->vadc_dev = qpnp_get_vadc(mdwc->dev, "usbin");
+		if (IS_ERR(mdwc->vadc_dev))
+			return PTR_ERR(mdwc->vadc_dev);
+	}
+
+	rc = qpnp_vadc_read(mdwc->vadc_dev, USBIN, &results);
+	if (rc) {
+		pr_err("Unable to read usbin rc=%d\n", rc);
+		return 0;
+	} else {
+		return results.physical;
+	}
+}
+
+
 static int dwc3_msm_power_get_property_usb(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  union power_supply_propval *val)
@@ -4179,6 +4246,9 @@ static int dwc3_msm_power_get_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		val->intval = psy->type;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		val->intval = get_prop_usbin_voltage_now(mdwc);
 		break;
 	default:
 		return -EINVAL;
@@ -4287,6 +4357,7 @@ static enum power_supply_property dwc3_msm_pm_power_props_usb[] = {
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_TYPE,
 	POWER_SUPPLY_PROP_SCOPE,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 };
 #endif
 //ASUS_BSP--- "[USB][NA][Spec] add ASUS Charger support"
@@ -4541,6 +4612,42 @@ dwc3_msm_ext_chg_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			printk("[DWC3-PM][MSM_USB_EXT_CHG_BLOCK_LPM] put:%d,count:%d\n",atomic_read(&mdwc->dev->power.usage_count),dwc3_pm_count);
 		}
 		break;
+	case MSM_USB_EXT_CHG_VOLTAGE_INFO:
+		if (get_user(val, (int __user *)arg)) {
+			pr_err("%s: get_user failed\n\n", __func__);
+			ret = -EFAULT;
+			break;
+		}
+
+		if (val == USB_REQUEST_5V)
+			pr_debug("%s:voting 5V voltage request\n", __func__);
+		else if (val == USB_REQUEST_9V)
+			pr_debug("%s:voting 9V voltage request\n", __func__);
+		break;
+	case MSM_USB_EXT_CHG_RESULT:
+		if (get_user(val, (int __user *)arg)) {
+			pr_err("%s: get_user failed\n\n", __func__);
+			ret = -EFAULT;
+			break;
+		}
+
+		if (!val)
+			pr_debug("%s:voltage request successful\n", __func__);
+		else
+			pr_debug("%s:voltage request failed\n", __func__);
+		break;
+	case MSM_USB_EXT_CHG_TYPE:
+		if (get_user(val, (int __user *)arg)) {
+			pr_err("%s: get_user failed\n\n", __func__);
+			ret = -EFAULT;
+			break;
+		}
+
+		if (val)
+			pr_debug("%s:charger is external charger\n", __func__);
+		else
+			pr_debug("%s:charger is not ext charger\n", __func__);
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -4642,6 +4749,9 @@ static void asus_dwc3_check_at_boot(struct work_struct *w)
 		if (asus_dwc3_get_id_state()) {
 			printk("[usb_dwc3] otg connected at boot\n");
 			asus_dwc3_set_id_state(1);
+		} else if (AX_MicroP_IsP01Connected() && pad_exist()) {
+			printk("[usb_dwc3] otg connected at boot(pad)");
+			queue_delayed_work_on(0, microp_cb_delay_wq, &microp_cb_delay_work, 0);
 		}
 	}
 }
@@ -4740,7 +4850,7 @@ int CarKitNotifyInitialize(void)
 	asus_switch_otg_carkit.print_name = otg_carkit_switch_name;
 	ret = switch_dev_register(&asus_switch_otg_carkit);
 	if (ret < 0) {
-	    printk("%s: Unable to register switch dev! %d\n", __FUNCTION__, ret);
+	    printk("[usb_dwc3] %s: Unable to register switch dev! %d\n", __FUNCTION__, ret);
 	    return -1;
 	}
 	return 0;
@@ -4753,9 +4863,8 @@ int CarKitNotifyInitialize(void)
 static void asus_set_vbus_state(int online){
 	static bool init;
 	struct dwc3_msm *dwc = context;
-	printk("PMIC BSV:%d\n",online);
+	printk("[usb_dwc3]PMIC BSV:%d\n",online);
 	if(dwc->ext_xceiv.bsv!=online){
-		ASUSEvtlog("[USB] BSV:%d\n",online);
 		if (dwc->otg_xceiv && (dwc->ext_xceiv.otg_capability ||!init)) {
 			//ASUS_BSP+++ BennyCheng "ignore BSV events in host mode or in pad auto mode"
 			if (dwc->ext_xceiv.host_mode || (DWC3_USB_AUTO == dwc->ext_xceiv.otg_mode
@@ -4894,11 +5003,35 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 	}
 	clk_prepare_enable(mdwc->hsphy_sleep_clk);
 
+	ret = of_property_read_u32(node, "qcom,utmi-clk-rate",
+				   (u32 *)&mdwc->utmi_clk_rate);
+	if (ret)
+		mdwc->utmi_clk_rate = 60000000;
+
 	mdwc->utmi_clk = devm_clk_get(&pdev->dev, "utmi_clk");
 	if (IS_ERR(mdwc->utmi_clk)) {
 		dev_err(&pdev->dev, "failed to get utmi_clk\n");
 		ret = PTR_ERR(mdwc->utmi_clk);
 		goto disable_sleep_a_clk;
+	}
+
+	if (mdwc->utmi_clk_rate == 24000000) {
+		/*
+		 * For setting utmi clock to 24MHz, first set 48MHz on parent
+		 * clock "utmi_clk_src" and then set divider 2 on child branch
+		 * "utmi_clk".
+		 */
+		mdwc->utmi_clk_src = devm_clk_get(&pdev->dev, "utmi_clk_src");
+		if (IS_ERR(mdwc->utmi_clk_src)) {
+			dev_err(&pdev->dev, "failed to get utmi_clk_src\n");
+			ret = PTR_ERR(mdwc->utmi_clk_src);
+			goto disable_sleep_a_clk;
+		}
+		clk_set_rate(mdwc->utmi_clk_src, 48000000);
+		/* 1 means divide utmi_clk_src by 2 */
+		clk_set_rate(mdwc->utmi_clk, 1);
+	} else {
+		clk_set_rate(mdwc->utmi_clk, mdwc->utmi_clk_rate);
 	}
 	clk_prepare_enable(mdwc->utmi_clk);
 
@@ -5034,7 +5167,6 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "irqreq HSPHYINT failed\n");
 			goto disable_hs_ldo;
 		}
-		enable_irq_wake(mdwc->hs_phy_irq);
 	}
 
 //ASUS_BSP+++ BennyCheng "not use pmic & adc for id pin detection"

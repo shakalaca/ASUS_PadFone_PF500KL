@@ -1052,6 +1052,24 @@ static int al3010_show_lux(struct device *dev,	 struct device_attribute *attr, c
 
 static DEVICE_ATTR(lux, S_IRUSR | S_IRGRP| S_IROTH, al3010_show_lux, NULL);
 
+static ssize_t al3010_store_flush(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	
+
+	if ((strict_strtoul(buf, 10, &val) < 0) || (val > 1))	{
+		printk("[als_P01] al3010_store_flush :  inval flush!!!\n");
+		return -EINVAL;
+	}
+	als_lux_report_flush();
+	printk("[als_P01] al3010_set_flush\n");
+
+	return count;
+}
+
+static DEVICE_ATTR(flush, S_IRWXU | S_IRWXG | S_IROTH,
+		   NULL, al3010_store_flush);
+
 static struct attribute *al3010_attributes[] = {
 	&dev_attr_range.attr,
 #ifdef ASUS_FACTORY_BUILD
@@ -1061,6 +1079,7 @@ static struct attribute *al3010_attributes[] = {
 	&dev_attr_mode.attr,
 	&dev_attr_power_state.attr,
 	&dev_attr_lux.attr,
+	&dev_attr_flush.attr,
 	NULL
 };
 

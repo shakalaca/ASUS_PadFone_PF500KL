@@ -157,69 +157,15 @@ static void nv_init_vkeys_8974(void)
 }
 // --- ASUS_BSP : add novatek virtual key map Deeo
 
-// ASUS_BSP +++ Victor_Fu "proximity driver"
-#include <linux/ProximityBasic.h>
-static proximity_resource a91_proximity_resources[] = {
-    {
-        .index = 0,
-        .type = PROXIMITY_FILE_SOURCE,
-        .algo_type = PROXIMITY_BODYSAR_NOTIFY_ALGO_TYPE,
-        .initEventState = PROXIMITY_EVNET_FAR,
-        .name = "proximity_test1",
-    },
-    {
-        .index = 1,
-        .type = PROXIMITY_FILE_SOURCE,
-        .algo_type = PROXIMITY_BODYSAR_NOTIFY_ALGO_TYPE,
-        .initEventState = PROXIMITY_EVNET_FAR,
-        .name = "proximity_test2",
-    },    
-    {
-        .index = 2,
-        .type = PROXIMITY_CAP1106_SOURCE,
-        .algo_type = PROXIMITY_BODYSAR_NOTIFY_ALGO_TYPE,
-        .initEventState = PROXIMITY_EVNET_FAR,
-        .name = "cap_test",
-    }, 
-};
-static proximity_platform_data  a91_proximity_data = {
-    .resource        = a91_proximity_resources,
-    .nResource       = ARRAY_SIZE(a91_proximity_resources),
-};
-
-static struct platform_device a91_proximity_device = {
-    .name = "proximity-core-sensor",
-    .id = 0,
-    .dev            = {
-        .platform_data  = &a91_proximity_data,
-    },
-};	
-
-static struct platform_device *msm_a91_proximity_devices[] = {
-	&a91_proximity_device,
-};
-// ASUS_BSP --- Victor_Fu "proximity driver"
-
-
-// ASUS_BSP +++ Peter_Lu "Lightsensor"
-static struct platform_device cm36283_device = {
-	.name = "cm36283",
+//+++Porting Nfc+++
+static struct platform_device nfc_device = {
+	.name = "pn544",
 	.id = 0,
 };
-
-static struct platform_device cm3628_device = {
-	.name = "cm3628",
-	.id = 0,
+static struct platform_device *msm_a86_nfc_devices[] = {
+	&nfc_device,
 };
-
-static struct platform_device *msm_a90_sensor_devices[] = {
-	&cm36283_device,
-};
-
-static struct platform_device *msm_a91_sensor_devices[] = {
-	&cm3628_device,
-};
-// ASUS_BSP ---
+//---Porting Nfc---
 
 /*
  * Used to satisfy dependencies for devices that need to be
@@ -245,23 +191,13 @@ void __init msm8974_add_drivers(void)
 	msm_thermal_device_init();
 	nv_init_vkeys_8974(); // +++ ASUS_BSP : add novatek virtual key map Deeo
 
-	// ASUS_BSP +++ Victor_Fu "proximity driver"
-	platform_add_devices(msm_a91_proximity_devices, ARRAY_SIZE(msm_a91_proximity_devices));
-	// ASUS_BSP --- Victor_Fu "proximity driver"
+	//+++Porting Nfc+++
+	platform_add_devices(msm_a86_nfc_devices, ARRAY_SIZE(msm_a86_nfc_devices));
+	//---Porting Nfc---
 
 	//ASUS BSP Hank_Chen : A86 1032 porting+++
 	platform_add_devices(msm_a86_bat_devices, ARRAY_SIZE(msm_a86_bat_devices));
 	//ASUS BSP Hank_Chen : A86 1032 porting---
-
-	// ASUS_BSP +++ Peter_Lu "cm3628 & cm36283 Lightsensor"
-	if ( g_ASUS_hwID == A90_EVB0 )	{
-		printk("Add_CM36283_sensor +++\n");
-		platform_add_devices(msm_a90_sensor_devices, ARRAY_SIZE(msm_a90_sensor_devices));
-	}else if( g_ASUS_hwID >= A91_SR1 && g_ASUS_hwID < A91_SR5 ) {
-		printk("Add_CM3628_sensor +++\n");
-		platform_add_devices(msm_a91_sensor_devices, ARRAY_SIZE(msm_a91_sensor_devices));
-	}
-	// ASUS_BSP ---
 }
 
 static struct of_dev_auxdata msm_hsic_host_adata[] = {
@@ -305,8 +241,6 @@ static struct of_dev_auxdata msm8974_auxdata_lookup[] __initdata = {
 			"msm-tsens", NULL),
 	OF_DEV_AUXDATA("qcom,qcedev", 0xFD440000, \
 			"qcedev.0", NULL),
-	OF_DEV_AUXDATA("qcom,qcrypto", 0xFD440000, \
-			"qcrypto.0", NULL),
 	OF_DEV_AUXDATA("qcom,hsic-host", 0xF9A00000, \
 			"msm_hsic_host", NULL),
 	OF_DEV_AUXDATA("qcom,hsic-smsc-hub", 0, "msm_smsc_hub",

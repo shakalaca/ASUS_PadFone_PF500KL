@@ -654,11 +654,14 @@ endif
 # ASUS_BSP : miniporting : jackson : add ASUS software version support ---
 
 # jackson : support mutliple project build +++
+ifeq ($(ASUS_BUILD_PROJECT), A86)
+        KBUILD_CPPFLAGS += -DASUS_A86_PROJECT=1
+endif
 ifeq ($(ASUS_BUILD_PROJECT), A91)
         KBUILD_CPPFLAGS += -DASUS_A91_PROJECT=1
 endif
 ifeq ($(ASUS_BUILD_PROJECT), PF500KL)
-	KBUILD_CPPFLAGS += -DASUS_PF500KL_PROJECT=1
+        KBUILD_CPPFLAGS += -DASUS_PF500KL_PROJECT=1
 endif
 # jackson : support mutliple project build ---
 

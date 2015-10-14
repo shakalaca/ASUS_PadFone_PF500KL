@@ -89,6 +89,23 @@ static int g_vib_stopval = 0;
 unsigned int debounce_rst_pin = 10000;
 unsigned int deb_maxtime_rst_pin =7200000 ;
 bool g_ResetPinHigh = false;
+
+typedef struct {
+	char VibMsg[30];
+	int DrvVoltage;
+	int ResFreq;
+	int DrvDegree;
+} VibTestMode;
+
+VibTestMode VibStrength[] = {
+	{"set 100 degree & 1.363 Vrms", 0x0F, 0x0F, 0x20},
+	{"set 170 degree & 1.305 Vrms", 0x08, 0x0F, 0x24},
+	{"set 170 degree & 1.479 Vrms", 0x09, 0x0F, 0x24},
+	{"set 170 degree & 1.653 Vrms", 0x0A, 0x0F, 0x24},
+	{"set 170 degree & 1.827 Vrms", 0x0B, 0x0F, 0x24},
+	{"set 170 degree & 2.001 Vrms", 0x0C, 0x0F, 0x24},
+} ;
+
 /*
 LC898301_write_reg():	write 8 bits reg function
 slave_addr:	SMBus address (7 bits)
@@ -383,122 +400,26 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 		msleep(1);
 	}
 
-	if (vib_mode == 0)
+	if (vib_mode < 6)
 	{
 	
-		printk("[On_semi_vibrator] set 100 degree & 1.363 Vrms\n");
+		printk("[On_semi_vibrator] %s\n", VibStrength[vib_mode].VibMsg);
 	
-		//driving voltage 15/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0F);
+		//driving voltage (15/15)
+		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, VibStrength[vib_mode].DrvVoltage);
 		if (ret < 0)
 			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
 
 		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
+		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, VibStrength[vib_mode].ResFreq);
 		if (ret < 0)
 			printk("[On_semi_vibrator] write RESOFRQ_02 fail \n");
 
-		//100 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x20);
+		//Output Voltage
+		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, VibStrength[vib_mode].DrvDegree);
 		if (ret < 0)
 			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");
 				
-	}
-	else if (vib_mode == 1)
-	{
-		printk("[On_semi_vibrator] set 170 degree & 1.305 Vrms\n");
-		
-		//driving voltage 8/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x08);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
-
-		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write RESOFRQ_02 fail \n");
-
-		//170 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x24);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");
-	
-	}
-	else if (vib_mode == 2)
-	{
-		printk("[On_semi_vibrator] set 170 degree & 1.479 Vrms\n");
-	
-		//driving voltage 9/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x09);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
-
-		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write RESOFRQ_02 fail \n");
-
-		//170 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x24);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");
-	
-	}
-	else if (vib_mode == 3)
-	{
-		printk("[On_semi_vibrator] set 170 degree & 1.653 Vrms\n");
-	
-		//driving voltage 10/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0A);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
-
-		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
-		if (ret < 0)
-			printk("[On_semi_vibrator]write RESOFRQ_02 fail \n");
-
-		//170 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x24);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");
-	}
-	else if (vib_mode == 4)
-	{
-		printk("[On_semi_vibrator] set 170 degree & 1.827 Vrms\n");
-	
-		//driving voltage 11/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0B);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
-
-		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write RESOFRQ_02 fail \n");
-
-		//170 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x24);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");		
-	}
-	else if (vib_mode == 5)
-	{
-		printk("[On_semi_vibrator] set 170 degree & 2.001 Vrms\n");	
-		//driving voltage 12/15
-		ret = LC898301_write_reg(LC898301_waddr, DRIVING_VOLTAGE_01, 0x0C);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVING_VOLTAGE_01 fail \n");
-
-		//Resonance freq. = 225Hz
-		ret = LC898301_write_reg(LC898301_waddr, RESOFRQ_02, 0x0F);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write RESOFRQ_02 fail \n");
-
-		//170 degree and 3v
-		ret = LC898301_write_reg(LC898301_waddr, DRIVER_OUTPUT_08, 0x24);
-		if (ret < 0)
-			printk("[On_semi_vibrator] write DRIVER_OUTPUT_08 fail \n");	
 	}
 	else if (vib_mode == 11)
 	{
@@ -514,9 +435,11 @@ static int vib_test_function(const char *val, struct kernel_param *kp)
 		if (ret < 0)
 			printk("[On_semi_vibrator] write SELFTEST_09 fail \n");	
 	}
-	
-	printk("[On_semi_vibrator] LC898301_dump_all_register\n");
-	LC898301_dump_all_register();
+	else if (vib_mode == 100)
+	{
+		printk("[On_semi_vibrator] LC898301_dump_all_register\n");
+		LC898301_dump_all_register();
+	}
 	return 0;
 }
 
@@ -534,6 +457,7 @@ static int LC898301_probe(struct i2c_client *client, const struct i2c_device_id 
 	
 	int ret = 0, ini_ret = 0;
 	
+	printk("[Progress][On_semi_vibrator] Probe starts\n");
 // ASUS BSP freddy+++ [A91][vib][spec][Others] "Change new vibrator driving IC after A91_SR5"
 	if (g_ASUS_hwID < A91_SR5) 
 	{
@@ -663,8 +587,7 @@ exit:
 	g_LC898301_probe_ok = 1;
 	printk("[On_semi_vibrator] g_LC898301_probe_ok = 1\n");
 //ASUS_BSP --- freddy"[A91][vib][NA][Spec]  for vibrator second source after A91_ER"
-	printk("[On_semi_vibrator] -------exit LC898301_probe -------\n");
-	printk("\n");
+	printk("[Progress][On_semi_vibrator] Probe ends\n");
 
 	return ret;
 
