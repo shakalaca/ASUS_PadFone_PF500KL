@@ -371,6 +371,18 @@ EXPORT_SYMBOL(himax_ts_suspend);
 
 int himax_ts_resume(void)
 {
+	if(delayed_work_pending(&hx_resume_w)) {
+		cancel_delayed_work_sync(&hx_resume_w);
+		printk("[Touch_H] cancel last resume_work\n");
+	}
+	queue_delayed_work(hx_attach_detach_wq, &hx_resume_w, msecs_to_jiffies(2));
+
+	return 0;
+}
+EXPORT_SYMBOL(himax_ts_resume);
+
+static int himax_resume(void)
+{
 	struct himax_ts_data *ts_modify;
 	uint8_t buf[2] = { 0 };
 
@@ -417,7 +429,6 @@ int himax_ts_resume(void)
 
 	return 0;
 }
-EXPORT_SYMBOL(himax_ts_resume);
 //----[ normal function]----------------------------------------------------------------------------------end
 
 //----[ i2c read/write function]------------------------------------------------------------------------start
@@ -5250,7 +5261,7 @@ static void himax_cable_status(struct work_struct *work)
 
 static void ts_resume_work(struct work_struct *work)
 {
-	himax_ts_resume();
+	himax_resume();
 }
 
 /*
