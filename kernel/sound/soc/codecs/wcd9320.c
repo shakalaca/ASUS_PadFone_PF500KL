@@ -6329,17 +6329,22 @@ static int taiko_handle_pdata(struct taiko_priv *taiko)
 	if (pdata->mclk_rate == TAIKO_MCLK_CLK_9P6MHZ) {
 		switch (pdata->dmic_sample_rate) {
 		case WCD9XXX_DMIC_SAMPLE_RATE_2P4MHZ:
+		case WCD9XXX_DMIC_SAMPLE_RATE_4P8MHZ:		//Bruno++
 			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_4;
 			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_4;
 			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_4;
 			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_OFF;
 			break;
-		case WCD9XXX_DMIC_SAMPLE_RATE_4P8MHZ:
-			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_2;
-			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_2;
-			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_2;
-			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_ON;
-			break;
+//Bruno++
+#if 0
+ 		case WCD9XXX_DMIC_SAMPLE_RATE_4P8MHZ:
+ 			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_2;
+ 			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_2;
+ 			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_2;
+ 			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_ON;
+ 			break;
+#endif
+//Bruno++
 		case WCD9XXX_DMIC_SAMPLE_RATE_3P2MHZ:
 		case WCD9XXX_DMIC_SAMPLE_RATE_UNDEFINED:
 			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_3;

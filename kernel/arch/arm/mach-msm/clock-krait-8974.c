@@ -465,6 +465,9 @@ static void get_krait_bin_format_b(struct platform_device *pdev,
 	/* Check PVS_BLOW_STATUS */
 	pte_efuse = readl_relaxed(base + 0x4) & BIT(21);
 	if (pte_efuse) {
+		dev_info(&pdev->dev, "original PVS bin: %d\n", *pvs);
+		if (*pvs > 3)
+			*pvs -= 3;
 		dev_info(&pdev->dev, "PVS bin: %d\n", *pvs);
 	} else {
 		dev_warn(&pdev->dev, "PVS bin not set. Defaulting to 0!\n");
