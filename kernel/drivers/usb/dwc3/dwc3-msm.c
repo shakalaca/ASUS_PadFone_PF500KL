@@ -1891,6 +1891,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 				if(asus_state_otg == ASUS_OTG_NONE){
 					asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
 					printk("[USB] set_chg_mode: ASUS AC\n");
+					ASUSEvtlog("[USB] set_chg_mode: ASUS AC\n");
 				}
 			}else{
 				printk("[USB] In Pad not notify set_chg_mode: ASUS AC\n");
@@ -1899,6 +1900,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 			if(!mdwc->ext_xceiv.host_mode){
 				asus_chg_set_chg_mode(ASUS_CHG_SRC_DC);
 				printk("[USB] set_chg_mode: ASUS AC\n");
+				ASUSEvtlog("[USB] set_chg_mode: ASUS AC\n");
 			}else{
 				printk("[USB] In Pad not notify set_chg_mode: ASUS AC\n");
 			}
@@ -4753,6 +4755,7 @@ static void asus_set_vbus_state(int online){
 	struct dwc3_msm *dwc = context;
 	printk("PMIC BSV:%d\n",online);
 	if(dwc->ext_xceiv.bsv!=online){
+		ASUSEvtlog("[USB] BSV:%d\n",online);
 		if (dwc->otg_xceiv && (dwc->ext_xceiv.otg_capability ||!init)) {
 			//ASUS_BSP+++ BennyCheng "ignore BSV events in host mode or in pad auto mode"
 			if (dwc->ext_xceiv.host_mode || (DWC3_USB_AUTO == dwc->ext_xceiv.otg_mode

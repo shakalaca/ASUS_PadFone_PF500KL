@@ -2270,6 +2270,7 @@ unchar sp_tx_get_cable_type(void)
 	unchar ds_port_preset = 0;
 	unchar ds_port_recoginze = 0;
 	int i,j;
+	int auxFailcount = 0;
 //ANX +++: (ver:20130105)
 	unchar c, ocm_status;
 //ANX ---: (ver:20130105)
@@ -2321,13 +2322,22 @@ unchar sp_tx_get_cable_type(void)
 		}
 		else
 		{
+		
 		DEV_NOTICE("Downstream is ASUS Pad DP\n");
 		sp_tx_rx_type = RX_DP;		
 		ds_port_recoginze = 1;
-
+		for (i = 0; i < 5; i++) {
+			if (AUX_ERR == sp_tx_aux_dpcdread_bytes(0x00, 0x02, DPCD_SINK_COUNT, 1, &c)) {
+				DEV_ERR(" AUX access error");
+				auxFailcount++;
+				msleep(200);
+			}
+		}
 		ASUS_DEV_INFO("--- Downstream ASUS Pad DP ---\n");
 		
 		}
+		if(auxFailcount > 3 )
+			return 0;
 		if (ds_port_recoginze)
 			return 1;
 	}
@@ -3587,7 +3597,14 @@ void sp_tx_sw_hdcp_process(void)
 //ASUS BSP Wei ---
 
 extern int g_isMyDP_poweron; //ASUS BSP wei +++
-
+//ASUS BSP wei +++
+#ifdef CONFIG_EEPROM_NUVOTON
+#include <linux/microp.h>
+#include <linux/microp_api.h>
+#include <linux/microp_pin_def.h>
+#endif
+extern int g_pad_speaker_retry;
+//ASUS BSP wei ---
 void sp_tx_set_sys_state(enum SP_TX_System_State ss)
 {
 	ktime_t rettime;
@@ -3631,6 +3648,11 @@ void sp_tx_set_sys_state(enum SP_TX_System_State ss)
 	case STATE_PLAY_BACK:
 		sp_tx_system_state = STATE_PLAY_BACK;
 		DEV_NOTICE("STATE_PLAY_BACK");
+		if(g_pad_speaker_retry) {
+			DEV_NOTICE("Enable pad_speaker\n");
+			AX_MicroP_setGPIOOutputPin(OUT_uP_SPK_EN, 1);
+			g_pad_speaker_retry = 0;
+		}
 //ASUS BSP++ Vincent
 		if(measure_pad_wakeup_time){
 			rettime = ktime_get();

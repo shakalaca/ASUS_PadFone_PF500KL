@@ -1058,6 +1058,10 @@ static void slimport_cable_plug_proc(struct anx7808_data *anx7808)
 				}
 				else
 				{
+					if(pad_insert){
+						schedule_work(&anx7808->vibratorWork);
+						pad_insert = 0;
+					}
 					msleep(20);					
 				}
 				
@@ -1681,10 +1685,7 @@ static irqreturn_t anx7808_cbl_det_isr(int irq, void *data)
        		wake_lock(&anx7808->slimport_lock);
 		DEV_NOTICE("%s : detect cable insertion\n", __func__);
 			queue_delayed_work(anx7808->workqueue, &anx7808->work, 0);
-		if(pad_insert){
-			schedule_work(&anx7808->vibratorWork);
-			pad_insert=0;
-		}
+
 	
 	} else {
 		DEV_NOTICE("%s : detect cable removal\n", __func__);
