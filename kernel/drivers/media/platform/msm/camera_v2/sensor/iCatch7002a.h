@@ -30,6 +30,7 @@ int sensor_read_reg(struct i2c_client *client, u16 addr, u16 *val);
 int sensor_write_reg(struct i2c_client *client, u16 addr, u16 val);
 int icatch_i2c_debuginit(void);
 int sensor_set_mode_main_camera(int  res, bool bSpeedUpPreview);
+unsigned int get_fw_version_in_bin(char* binfile_path);
 int sensor_set_mode_second_camera(int res);
 unsigned int get_fw_version_in_isp_fromISP(void);
 unsigned int get_fw_version_in_isp(void);

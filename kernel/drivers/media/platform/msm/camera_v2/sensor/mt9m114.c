@@ -83,6 +83,8 @@ extern u32 is_calibration;
 extern u8 *g_pbootBuf;
 extern bool g_is_fw_loaded;
 extern bool g_is_fw_back_cal_loaded;
+extern char  BIN_FILE_WITH_PATH_A91[];
+extern unsigned int version_num_in_isp;
 #define BUFFER_SIZE 4<<10
 struct spi_message spi_msg;
 struct spi_transfer spi_xfer;
@@ -2096,6 +2098,7 @@ int32_t mt9m114_boot_from_host(struct msm_sensor_ctrl_t *s_ctrl)
                     if(fp->f_op != NULL && fp->f_op->read != NULL){
                         int byte_count= 0;
                         pr_info("Start to read %s\n", binfile_path);
+			version_num_in_isp = get_fw_version_in_bin(BIN_FILE_WITH_PATH_A91);
                         byte_count = fp->f_op->read(fp, g_pbootBuf, bootbin_size, &fp->f_pos);
                         if (byte_count <= 0) {
                             pr_err("iCatch: EOF or error. last byte_count= %d;\n", byte_count);
@@ -2202,6 +2205,7 @@ int32_t mt9m114_boot_from_host_first_time(struct msm_sensor_ctrl_t *s_ctrl)
                     if(fp->f_op != NULL && fp->f_op->read != NULL){
                         int byte_count= 0;
                         pr_info("Start to read %s\n", binfile_path);
+			version_num_in_isp = get_fw_version_in_bin(BIN_FILE_WITH_PATH_A91);
                         byte_count = fp->f_op->read(fp, g_pbootBuf, bootbin_size, &fp->f_pos);
                         if (byte_count <= 0) {
                             pr_err("iCatch: EOF or error. last byte_count= %d;\n", byte_count);

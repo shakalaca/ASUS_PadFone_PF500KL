@@ -41,6 +41,8 @@
 #include <linux/delay.h>
 #include <linux/swap.h>
 #include <linux/fs.h>
+#include <linux/cpuset.h>
+#include<linux/slab.h>
 
 #ifdef CONFIG_HIGHMEM
 #define _ZONE ZONE_HIGHMEM
@@ -73,6 +75,39 @@ static unsigned long lowmem_deathpending_timeout;
 			printk(x);			\
 	} while (0)
 
+
+#define DTaskMax 4
+struct task_node {
+     struct list_head node;
+     struct task_struct *pTask;
+};
+enum EListAllocate {
+	EListAllocate_Init,
+	EListAllocate_Head,
+	EListAllocate_Body,
+	EListAllocate_Tail
+};
+static int list_insert(struct task_struct *pTask, struct list_head *pPosition)
+{
+	int nResult = 0;
+	struct task_node *pTaskNode;
+	pTaskNode = kmalloc(sizeof(struct task_node), GFP_KERNEL);
+	if (pTaskNode) {
+		pTaskNode->pTask = pTask;
+		list_add(&pTaskNode->node, pPosition);
+		nResult = 1;
+	}
+	return nResult;
+}
+static void list_reset(struct list_head *pList)
+{
+	struct task_node *pTaskIterator;
+	struct task_node *pTaskNext;
+	list_for_each_entry_safe(pTaskIterator, pTaskNext, pList, node) {
+		list_del(&pTaskIterator->node);
+		kfree(pTaskIterator);
+	}
+}
 static int test_task_flag(struct task_struct *p, int flag)
 {
 	struct task_struct *t = p;
@@ -226,20 +261,31 @@ void tune_lmk_param(int *other_free, int *other_file, struct shrink_control *sc)
 	}
 }
 
+#define ASUS_MEMORY_DEBUG_MAXLEN    (128)
+#define ASUS_MEMORY_DEBUG_MAXCOUNT  (256)
+#define HEAD_LINE "PID       RSS    oom_adj       cmdline\n"
+char meminfo_str[ASUS_MEMORY_DEBUG_MAXCOUNT][ASUS_MEMORY_DEBUG_MAXLEN];
+
 static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 {
+	LIST_HEAD(ListHead);
+	int nTaskNum = 0;
 	struct task_struct *tsk,*tsk_check;
 	struct task_struct *selected = NULL;
 	int rem = 0;
 	int tasksize;
 	int i;
+	int meminfo_str_index = 0;
 	int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
+	int minfree = 0;
 	int selected_tasksize = 0;
 	int selected_oom_score_adj;
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free;
 	int other_file;
 	unsigned long nr_to_scan = sc->nr_to_scan;
+	struct task_node *pTaskIterator;
+	struct task_node *pTaskNext;
 
 	if (nr_to_scan > 0) {
 		if (mutex_lock_interruptible(&scan_mutex) < 0)
@@ -263,6 +309,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	if (lowmem_minfree_size < array_size)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
+		minfree = lowmem_minfree[i];
 		if (other_free < lowmem_minfree[i] &&
 		    other_file < lowmem_minfree[i]) {
 			min_score_adj = lowmem_adj[i];
@@ -328,7 +375,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	for_each_process(tsk) {
 		struct task_struct *p;
 		int oom_score_adj;
-
+		int nError = 0;
+		struct list_head *pInsertPos = NULL;
 		if (tsk->flags & PF_KTHREAD)
 			continue;
 
@@ -338,6 +386,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 
 		if (time_before_eq(jiffies, lowmem_deathpending_timeout)) {
 			if (test_task_flag(tsk, TIF_MEMDIE)) {
+				list_reset(&ListHead);
 				rcu_read_unlock();
 				/* give the system time to free up the memory */
 				msleep_interruptible(20);
@@ -351,45 +400,164 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			continue;
 
 		oom_score_adj = p->signal->oom_score_adj;
+		tasksize = get_mm_rss(p->mm);
+		if(meminfo_str_index >= ASUS_MEMORY_DEBUG_MAXCOUNT )
+			meminfo_str_index = ASUS_MEMORY_DEBUG_MAXCOUNT - 1;
+		snprintf(meminfo_str[meminfo_str_index++], ASUS_MEMORY_DEBUG_MAXLEN, "%6d  %8ldkB %8d %s\n", p->pid, tasksize * (long)(PAGE_SIZE / 1024),oom_score_adj, p->comm);
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
 			continue;
 		}
-		tasksize = get_mm_rss(p->mm);
+		
+
 		task_unlock(p);
 		if (tasksize <= 0)
 			continue;
-		if (selected) {
-			if (oom_score_adj < selected_oom_score_adj)
-				continue;
-//			if (oom_score_adj == selected_oom_score_adj &&
-//			    tasksize <= selected_tasksize)
-//				continue;
-			if (tasksize <= selected_tasksize)
-				continue;
+		lowmem_print(3, "[Candidate] comm: %s, oom_score_adj: %d, tasksize: %d\n", p->comm, oom_score_adj, tasksize);
+		if (nTaskNum == 0) {
+			if (list_insert(p, &ListHead))
+				nTaskNum++;
+			else
+				lowmem_print(1, "Unable to allocate memory (%d)\n", EListAllocate_Init);
+		} else {
+			/* Find the node index that fit for current task */
+			struct task_node *pTaskSearchIterator;
+			struct task_node *pTaskSearchNext;
+			list_for_each_entry_safe(pTaskSearchIterator, pTaskSearchNext, &ListHead, node) {
+				int nTargeteAdj = 0;
+				int nTargetSize = 0;
+				struct task_struct *pTask;
+				pTask = pTaskSearchIterator->pTask;
+				if (!pTask)
+					continue;
+				task_lock(pTask);
+				
+				if (pTask->signal)
+					nTargeteAdj = pTask->signal->oom_score_adj;
+				if (pTask->mm)
+					nTargetSize = get_mm_rss(pTask->mm);
+				task_unlock(pTask);
+				if (oom_score_adj > nTargeteAdj) {
+				} else if (oom_score_adj < nTargeteAdj) {
+					break;
+				} else {
+					if (tasksize > nTargetSize) {
+					} else if (tasksize <= nTargetSize) {
+						break;
+					}
+				}
+			}
+
+			/* Determine the insert position */
+			if (&pTaskSearchIterator->node == &ListHead) {
+				/* Add node to tail */
+				pInsertPos = ListHead.prev;
+				nError = EListAllocate_Tail;
+			} else if (&pTaskSearchIterator->node == ListHead.next) {
+				if (nTaskNum < DTaskMax) {
+					/* Add node to head */
+					pInsertPos = &ListHead;
+					nError = EListAllocate_Head;
+				}
+			} else {
+				/* Insert node to the list */
+				pInsertPos = pTaskSearchIterator->node.prev;
+				nError = EListAllocate_Body;
+			}
+			/* Perform insertion */
+			if (pInsertPos) {
+				if (list_insert(p, pInsertPos))
+					nTaskNum++;
+				else
+					lowmem_print(1, "Unable to allocate memory (%d)\n", nError);
+			}
+			/* Delete node if the kept tasks exceed the limit */
+			if (nTaskNum > DTaskMax) {
+				struct task_node *pDeleteNode = list_entry((ListHead).next, struct task_node, node);
+				list_del((ListHead).next);
+				kfree(pDeleteNode);
+				nTaskNum--;
+			}
 		}
-		selected = p;
-		selected_tasksize = tasksize;
-		//selected_oom_score_adj = oom_score_adj;
-		lowmem_print(2, "select %d (%s), adj %d, size %d, to kill\n",
-			     p->pid, p->comm, oom_score_adj, tasksize);
 	}
-	if (selected) {
-		lowmem_print(1, "send sigkill to %d (%s), adj %d, size %d\n",
-			     selected->pid, selected->comm,
-			     selected_oom_score_adj, selected_tasksize);
+
+	list_for_each_entry_safe_reverse(pTaskIterator, pTaskNext, &ListHead, node) {
+		selected = pTaskIterator->pTask;
+		if (!selected)
+			continue;
+		task_lock(selected);
+		if (test_tsk_thread_flag(selected, TIF_MEMDIE)) {
+			task_unlock(selected);
+			continue;
+		}
+		if (selected->signal)
+			selected_oom_score_adj = selected->signal->oom_score_adj;
+		if (selected->mm)
+			selected_tasksize = get_mm_rss(selected->mm);
+		task_unlock(selected);
+
+
+
+
+		if(selected_oom_score_adj < 1000){
+				int count = 0;
+				printk(HEAD_LINE);
+				while (count < meminfo_str_index ){
+					printk(meminfo_str[count]);
+					count++;
+				}
+		}
+		lowmem_print(1, "Killing '%s' (%d), adj %hd,\n" \
+				"   to free %ldkB on behalf of '%s' (%d) because\n" \
+				"   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n" \
+				"   Free memory is %ldkB above reserved.\n" \
+				"   Free CMA is %ldkB\n" \
+				"   Total reserve is %ldkB\n" \
+				"   Total free pages is %ldkB\n" \
+				"   Total file cache is %ldkB\n" \
+				"   Slab Reclaimable is %ldkB\n" \
+				"   Slab UnReclaimable is %ldkB\n" \
+				"   Total Slab is %ldkB\n" \
+				"   GFP mask is 0x%x\n",
+			     selected->comm, selected->pid,
+			     selected_oom_score_adj,
+			     selected_tasksize * (long)(PAGE_SIZE / 1024),
+			     current->comm, current->pid,
+			     other_file * (long)(PAGE_SIZE / 1024),
+			     minfree * (long)(PAGE_SIZE / 1024),
+			     min_score_adj,
+			     other_free * (long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FREE_CMA_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     totalreserve_pages * (long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FREE_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_FILE_PAGES) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_RECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_UNRECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     global_page_state(NR_SLAB_RECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024) +
+			     global_page_state(NR_SLAB_UNRECLAIMABLE) *
+				(long)(PAGE_SIZE / 1024),
+			     sc->gfp_mask);
+
+
 		lowmem_deathpending_timeout = jiffies + HZ;
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		rem -= selected_tasksize;
-		rcu_read_unlock();
 		/* give the system time to free up the memory */
 		msleep_interruptible(20);
-	} else
-		rcu_read_unlock();
+	}
+	list_reset(&ListHead);
+
 
 	lowmem_print(4, "lowmem_shrink %lu, %x, return %d\n",
 		     nr_to_scan, sc->gfp_mask, rem);
+	rcu_read_unlock();
 	mutex_unlock(&scan_mutex);
 	return rem;
 }

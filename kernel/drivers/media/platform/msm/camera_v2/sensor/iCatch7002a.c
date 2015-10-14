@@ -100,13 +100,13 @@ static int exif_debug=0; //Asus jason_yeh add exif_debug message
 ////////////////////////////////////////////////////////
 char debug_buf[1024];
 
-static unsigned int version_num_in_isp = 0xffffff;
+unsigned int version_num_in_isp = 0xffffff;
 static unsigned int b_fw_is_valid = 1;
 //struct pm_qos_request pm_qos_req_list;
 
 static bool g_spi_is_support_1M = true;
 static char  BIN_FILE_WITH_PATH[] = "/asusfw/camera/BOOT.BIN";
-static char  BIN_FILE_WITH_PATH_A91[] = "/asusfw/camera/BOOT_A91.BIN";
+char  BIN_FILE_WITH_PATH_A91[] = "/asusfw/camera/BOOT_A91.BIN";
 static char* UPDATE_FILE_WITH_PATH;
 static int iCatch_is_updating = 0;
 static bool g_enable_roi_debug = false;
@@ -1080,7 +1080,9 @@ unsigned int get_fw_version_in_bin(char* binfile_path)
 	int fp;
 	mm_segment_t old_fs;
 	unsigned long bootbin_size = 0;
-
+	pr_info("version_num_in_isp : %d\n", version_num_in_isp);
+	if (version_num_in_isp != 0xffffff)
+	return version_num_in_isp;
 	/* Calculate BOOT.BIN file size. */
     	old_fs = get_fs();
 	set_fs(KERNEL_DS);

@@ -704,3 +704,9 @@ CONFIG_ASUS_HDMI=y
 CONFIG_PN65N_NFC=y
 CONFIG_NFC_DEVICES=y
 #---Porting NFC's kernel---
+
+#enable zram
+CONFIG_SWAP=y
+CONFIG_ZRAM=y
+CONFIG_ZSMALLOC=y
+#enable zram
